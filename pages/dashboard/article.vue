@@ -520,6 +520,13 @@ function copyWechatLink() {
     copied.value = false;
   }, 1000);
 }
+
+function selectOnlyDownloaded() {
+  if (!gridApi.value) return;
+  gridApi.value.forEachNode(node => {
+    node.setSelected(node.data.contentDownload === true);
+  });
+}
 </script>
 
 <template>
@@ -586,6 +593,12 @@ function copyWechatLink() {
             />
           </ButtonGroup>
 
+          <UButton
+            :disabled="!selectedAccount"
+            icon="i-heroicons-check-circle"
+            label="已抓取"
+            @click="selectOnlyDownloaded"
+          />
           <UButton
             :disabled="!selectedAccount"
             :icon="copied ? 'i-lucide:check' : 'i-heroicons-link-16-solid'"
