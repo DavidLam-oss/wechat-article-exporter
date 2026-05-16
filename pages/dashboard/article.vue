@@ -311,6 +311,11 @@ const gridOptions: GridOptions = defu(
         },
       ],
     },
+    isExternalFilterPresent: () => showFailedOnly.value,
+    doesExternalFilterPass: node => {
+      if (!showFailedOnly.value) return true;
+      return isFailedArticle(node.data);
+    },
   },
   sharedGridOptions
 );
@@ -527,6 +532,19 @@ function selectOnlyDownloaded() {
     node.setSelected(node.data.contentDownload === true);
   });
 }
+
+// 仅显示失败筛选
+const showFailedOnly = ref(false);
+
+function filterFailed() {
+  showFailedOnly.value = !showFailedOnly.value;
+  gridApi.value?.onFilterChanged();
+}
+
+function isFailedArticle(article: Article): boolean {
+  const status = article._status || '';
+  return status !== '' && status !== '正常' && status !== '已删除';
+}
 </script>
 
 <template>
@@ -598,6 +616,13 @@ function selectOnlyDownloaded() {
             icon="i-heroicons-check-circle"
             label="已抓取"
             @click="selectOnlyDownloaded"
+          />
+          <UButton
+            :disabled="!selectedAccount"
+            :icon="showFailedOnly ? 'i-heroicons-minus-circle' : 'i-heroicons-exclamation-circle'"
+            :label="showFailedOnly ? '显示全部' : '仅显示失败'"
+            :color="showFailedOnly ? 'red' : 'orange'"
+            @click="filterFailed"
           />
           <UButton
             :disabled="!selectedAccount"
