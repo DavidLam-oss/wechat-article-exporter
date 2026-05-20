@@ -209,14 +209,13 @@ export class Downloader extends BaseDownloader {
         } else if (status === 'Exception' && !commentID) {
           // 文章下载失败(风控导致的)
           console.warn(`文章(url: ${url} )下载失败(风控所致)`);
-          await updateDebugCache({
-            fakeid: article.fakeid,
-            type: `exception:${commentID}`,
-            url: url,
-            title: article.title,
-            file: blob,
-          });
-          throwException(`文章(url: ${url} )下载失败`);
+
+          // 通知外边更新文章状态
+          this.emit('download:exception', url, '风控');
+          this.pending.delete(url);
+          this.failed.add(url);
+          this.proxyManager.recordSuccess(proxy);
+          return;
         } else if (status === 'Error') {
           // 下载失败
           console.warn(`文章(url: ${url} )解析失败`);
@@ -306,14 +305,13 @@ export class Downloader extends BaseDownloader {
         } else if (status === 'Exception' && !commentID) {
           // 文章下载失败(风控导致的)
           console.warn(`文章(url: ${url} )下载失败(风控所致)`);
-          await updateDebugCache({
-            fakeid: article.fakeid,
-            type: `exception:${commentID}`,
-            url: url,
-            title: article.title,
-            file: blob,
-          });
-          throwException(`文章(url: ${url} )下载失败`);
+
+          // 通知外边更新文章状态
+          this.emit('download:exception', url, '风控');
+          this.pending.delete(url);
+          this.failed.add(url);
+          this.proxyManager.recordSuccess(proxy);
+          return;
         } else if (status === 'Error') {
           // 下载文章失败，需要重试
           console.warn(`获取阅读量时发现文章(url: ${url} )解析失败`);
