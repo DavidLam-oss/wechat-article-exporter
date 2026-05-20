@@ -29,3 +29,6 @@ samples/**/output
 
 # wrangler
 .wrangler
+
+# Self-hosted proxy worker (private infrastructure)
+proxy-worker/
