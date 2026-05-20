@@ -34,8 +34,8 @@ export class BaseDownloader {
     this.validateInputs(urls);
 
     const privateProxies = (preferences.value as Preferences).privateProxyList || [];
-    // 优先使用公共代理，私有代理作为兜底
-    const proxies = [...PUBLIC_PROXY_LIST, ...privateProxies];
+    // 优先使用私有代理，公共代理作为兜底
+    const proxies = privateProxies.length > 0 ? [...privateProxies, ...PUBLIC_PROXY_LIST] : PUBLIC_PROXY_LIST;
 
     this.urls = [...urls].reverse();
     this.pending = new Set();
