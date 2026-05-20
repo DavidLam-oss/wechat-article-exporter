@@ -33,11 +33,9 @@ export class BaseDownloader {
   constructor(urls: string[], options: DownloadOptions = {}) {
     this.validateInputs(urls);
 
-    const proxies = (preferences.value as Preferences).privateProxyList || [];
-    if (proxies.length === 0) {
-      // 如果没有配置私有代理，则使用公共代理
-      proxies.push(...PUBLIC_PROXY_LIST);
-    }
+    const privateProxies = (preferences.value as Preferences).privateProxyList || [];
+    // 优先使用公共代理，私有代理作为兜底
+    const proxies = [...PUBLIC_PROXY_LIST, ...privateProxies];
 
     this.urls = [...urls].reverse();
     this.pending = new Set();
