@@ -115,6 +115,7 @@ export class Downloader extends BaseDownloader {
     if (!article) {
       this.pending.delete(url);
       this.failed.add(url);
+      this.emit('download:exception', url, '文章未找到');
       return;
     }
 
@@ -140,6 +141,7 @@ export class Downloader extends BaseDownloader {
 
     this.pending.delete(url);
     this.failed.add(url);
+    this.emit('download:exception', url, 'fakeid修复失败');
   }
 
   // 下载 HTML 任务
@@ -160,6 +162,7 @@ export class Downloader extends BaseDownloader {
     if (!article) {
       this.pending.delete(url);
       this.failed.add(url);
+      this.emit('download:exception', url, '文章未找到');
       return;
     }
 
@@ -235,6 +238,7 @@ export class Downloader extends BaseDownloader {
 
     this.pending.delete(url);
     this.failed.add(url);
+    this.emit('download:exception', url, 'HTML下载失败');
   }
 
   // 下载阅读量等元数据任务
@@ -245,6 +249,7 @@ export class Downloader extends BaseDownloader {
     if (!article) {
       this.pending.delete(url);
       this.failed.add(url);
+      this.emit('download:exception', url, '文章未找到');
       return;
     }
 
@@ -254,6 +259,7 @@ export class Downloader extends BaseDownloader {
     } catch (error) {
       this.pending.delete(url);
       this.failed.add(url);
+      this.emit('download:exception', url, 'Credential无效');
       throw error;
     }
 
@@ -331,6 +337,7 @@ export class Downloader extends BaseDownloader {
 
     this.pending.delete(url);
     this.failed.add(url);
+    this.emit('download:exception', url, '元数据下载失败');
   }
 
   // 下载留言数据任务
@@ -341,6 +348,7 @@ export class Downloader extends BaseDownloader {
     if (!article) {
       this.pending.delete(url);
       this.failed.add(url);
+      this.emit('download:exception', url, '文章未找到');
       return;
     }
 
@@ -350,6 +358,7 @@ export class Downloader extends BaseDownloader {
     } catch (error) {
       this.pending.delete(url);
       this.failed.add(url);
+      this.emit('download:exception', url, 'Credential无效');
       throw error;
     }
 
@@ -359,6 +368,7 @@ export class Downloader extends BaseDownloader {
       // 文章还未下载，不能下载留言
       this.pending.delete(url);
       this.failed.add(url);
+      this.emit('download:exception', url, 'HTML未下载');
       return;
     }
     const title = cached.title;
@@ -402,6 +412,7 @@ export class Downloader extends BaseDownloader {
       continue_flag = false;
       this.pending.delete(url);
       this.failed.add(url);
+      this.emit('download:exception', url, '评论下载失败');
       return;
     }
     await updateCommentCache({
@@ -454,6 +465,7 @@ export class Downloader extends BaseDownloader {
       // 走到这里说明已经失败了
       this.pending.delete(url);
       this.failed.add(url);
+      this.emit('download:exception', url, '评论回复下载失败');
       return;
     }
 
