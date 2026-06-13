@@ -22,6 +22,7 @@ import GridArticleActions from '~/components/grid/ArticleActions.vue';
 import GridCoverTooltip from '~/components/grid/CoverTooltip.vue';
 import GridStatusBar from '~/components/grid/StatusBar.vue';
 import AccountSelectorForArticle from '~/components/selector/AccountSelectorForArticle.vue';
+import toastFactory from '~/composables/toast';
 import { isDev, websiteName } from '~/config';
 import { sharedGridOptions } from '~/config/shared-grid-options';
 import { articleDeleted, getArticleCache, updateArticleStatus } from '~/store/v2/article';
@@ -32,6 +33,7 @@ import { type MpAccount } from '~/store/v2/info';
 import { getMetadataCache, type Metadata } from '~/store/v2/metadata';
 import type { Preferences } from '~/types/preferences';
 import type { AppMsgExWithFakeID } from '~/types/types';
+import { buildArticlesCsv, downloadCsv } from '~/utils/article-csv';
 import {
   ARTICLE_DATE_RANGE_OPTIONS,
   type ArticleDateRange,
@@ -560,6 +562,21 @@ function isFailedArticle(article: Article): boolean {
   return status !== '' && status !== '正常' && status !== '已删除';
 }
 
+// 高级选项折叠区
+const showAdvanced = ref(false);
+const toast = toastFactory();
+
+function exportCSV() {
+  if (rawRowData.length === 0) {
+    toast.warning('当前账号暂无文章可导出');
+    return;
+  }
+  const csv = buildArticlesCsv(rawRowData);
+  const nickname = selectedAccount.value?.nickname ?? 'articles';
+  downloadCsv(`${nickname}-${dayjs().format('YYYY-MM-DD')}`, csv);
+  toast.success(`已导出 ${rawRowData.length} 篇文章为 CSV`);
+}
+
 // 日期范围筛选（页面局部状态，不持久化）
 const articleDateRange = ref<ArticleDateRange>('all');
 const articleDateStart = ref<number>(0);
@@ -660,9 +677,10 @@ watch([articleDateRange, articleDateStart, articleDateEnd], () => {
             </template>
           </div>
         </div>
-        <div class="flex items-center space-x-2">
-          <UButton v-if="downloadBtnLoading" color="black" @click="stopDownload">停止</UButton>
-          <ButtonGroup
+        <div class="flex flex-col gap-2">
+          <div class="flex flex-wrap items-center gap-2">
+            <UButton v-if="downloadBtnLoading" color="black" @click="stopDownload">停止</UButton>
+            <ButtonGroup
             :items="[
               { label: '文章内容', event: 'download-article-html' },
               { label: '阅读量 (需要Credential)', event: 'download-article-metadata' },
@@ -724,13 +742,29 @@ watch([articleDateRange, articleDateStart, articleDateEnd], () => {
             @click="filterFailed"
           />
           <UButton
+            :color="showAdvanced ? 'primary' : 'white'"
+            :icon="showAdvanced ? 'i-heroicons-chevron-up-20-solid' : 'i-heroicons-chevron-down-20-solid'"
+            label="高级选项"
+            @click="showAdvanced = !showAdvanced"
+          />
+        </div>
+        <div v-if="showAdvanced" class="flex flex-wrap items-center gap-2">
+          <UButton
+            :disabled="!selectedAccount"
+            icon="i-heroicons-table-cells"
+            label="导出 CSV"
+            color="white"
+            @click="exportCSV"
+          />
+          <UButton
             :disabled="!selectedAccount"
             :icon="copied ? 'i-lucide:check' : 'i-heroicons-link-16-solid'"
             label="复制公众号链接"
             :color="copied ? 'green' : 'blue'"
             @click="copyWechatLink"
           />
-          <UButton v-if="isDev" @click="debug">调试</UButton>
+          <UButton v-if="isDev" icon="i-heroicons-bug-ant" label="调试" @click="debug" />
+        </div>
         </div>
       </header>
 
