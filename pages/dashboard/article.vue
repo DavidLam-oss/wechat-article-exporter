@@ -12,6 +12,7 @@ import type {
   ValueGetterParams,
 } from 'ag-grid-community';
 import { AgGridVue } from 'ag-grid-vue3';
+import dayjs from 'dayjs';
 import { defu } from 'defu';
 import type { PreviewArticle } from '#components';
 import { durationToSeconds, formatItemShowType, formatTimeStamp, sleep } from '#shared/utils/helpers';
@@ -31,6 +32,11 @@ import { type MpAccount } from '~/store/v2/info';
 import { getMetadataCache, type Metadata } from '~/store/v2/metadata';
 import type { Preferences } from '~/types/preferences';
 import type { AppMsgExWithFakeID } from '~/types/types';
+import {
+  ARTICLE_DATE_RANGE_OPTIONS,
+  type ArticleDateRange,
+  getArticleDateRangeBounds,
+} from '~/utils/article-date-range';
 import type { ArticleMetadata } from '~/utils/download/types';
 import { createBooleanColumnFilterParams, createDateColumnFilterParams } from '~/utils/grid';
 
@@ -52,6 +58,10 @@ interface Article extends AppMsgExWithFakeID, Partial<ArticleMetadata> {
 }
 
 let globalRowData: Article[] = [];
+
+// 加载完成、未应用 hideDeleted / 日期范围过滤的原始列表。
+// 日期筛选变化时复用此列表重新过滤，避免重复拉取 IndexedDB。
+let rawRowData: Article[] = [];
 
 const columnDefs = ref<ColDef[]>([
   {
@@ -372,6 +382,9 @@ watch(selectedAccount, newVal => {
 
 async function switchTableData(fakeid: string) {
   loading.value = true;
+  // 切换公众号时把日期范围重置为全量
+  articleDateRange.value = 'all';
+  articleDatePoint.value = 0;
   const articles: Article[] = [];
   const data = await getArticleCache(fakeid, Math.floor(Date.now() / 1000));
   for (const article of data) {
@@ -394,8 +407,8 @@ async function switchTableData(fakeid: string) {
     }
   }
   await sleep(200);
-  globalRowData = articles.filter(article => (hideDeleted.value ? !article.is_deleted : true));
-  gridApi.value?.setGridOption('rowData', globalRowData);
+  rawRowData = articles;
+  applyFiltersToGrid();
   loading.value = false;
 }
 
@@ -545,6 +558,34 @@ function isFailedArticle(article: Article): boolean {
   const status = article._status || '';
   return status !== '' && status !== '正常' && status !== '已删除';
 }
+
+// 日期范围筛选（页面局部状态，不持久化）
+const articleDateRange = ref<ArticleDateRange>('all');
+const articleDatePoint = ref<number>(0);
+
+const DATE_RANGE_OPTIONS = ARTICLE_DATE_RANGE_OPTIONS;
+
+const articleDateRangeLabel = computed(() => {
+  const opt = DATE_RANGE_OPTIONS.find(o => o.value === articleDateRange.value);
+  if (!opt) return '全部';
+  if (articleDateRange.value === 'point' && articleDatePoint.value > 0) {
+    return dayjs.unix(articleDatePoint.value).format('YYYY-MM-DD');
+  }
+  return opt.label;
+});
+
+function applyFiltersToGrid() {
+  const { lower, upper } = getArticleDateRangeBounds(articleDateRange.value, articleDatePoint.value, dayjs());
+  globalRowData = rawRowData.filter(article => {
+    if (hideDeleted.value && article.is_deleted) return false;
+    return article.update_time >= lower && article.update_time <= upper;
+  });
+  gridApi.value?.setGridOption('rowData', globalRowData);
+}
+
+watch([articleDateRange, articleDatePoint], () => {
+  applyFiltersToGrid();
+});
 </script>
 
 <template>
@@ -557,8 +598,38 @@ function isFailedArticle(article: Article): boolean {
       <!-- 顶部筛选与操作区 -->
       <header class="flex flex-col items-start lg:flex-row lg:items-center lg:justify-between gap-2 px-3 py-2">
         <div class="flex flex-col xl:flex-row gap-2">
-          <div class="flex space-x-3">
+          <div class="flex items-center space-x-2">
             <AccountSelectorForArticle v-model="selectedAccount" class="w-80" />
+            <USelectMenu
+              v-model="articleDateRange"
+              :options="DATE_RANGE_OPTIONS"
+              value-attribute="value"
+              option-attribute="label"
+              :popper="{ placement: 'bottom-start' }"
+            >
+              <UButton
+                color="white"
+                icon="i-heroicons-calendar-days-20-solid"
+                :label="articleDateRangeLabel"
+                trailing-icon="i-heroicons-chevron-down-20-solid"
+                class="font-mono"
+              />
+            </USelectMenu>
+            <UPopover
+              v-if="articleDateRange === 'point'"
+              :popper="{ placement: 'bottom-start' }"
+            >
+              <UButton
+                color="white"
+                icon="i-heroicons-calendar-days-20-solid"
+                :label="articleDatePoint > 0 ? dayjs.unix(articleDatePoint).format('YYYY-MM-DD') : '选择日期'"
+                trailing-icon="i-heroicons-chevron-down-20-solid"
+                class="font-mono"
+              />
+              <template #panel="{ close }">
+                <BaseDatePicker v-model="articleDatePoint" is-required @close="close" />
+              </template>
+            </UPopover>
           </div>
         </div>
         <div class="flex items-center space-x-2">
