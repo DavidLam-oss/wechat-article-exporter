@@ -566,15 +566,29 @@ function isFailedArticle(article: Article): boolean {
 const showAdvanced = ref(false);
 const toast = toastFactory();
 
+function buildCsvFilename(nickname: string): string {
+  const today = dayjs().format('YYYY-MM-DD');
+  if (articleDateRange.value === 'all') {
+    return `${nickname}-${today}`;
+  }
+  const { lower, upper } = getArticleDateRangeBounds(articleDateRange.value, dayjs(), {
+    start: articleDateStart.value,
+    end: articleDateEnd.value,
+  });
+  const startStr = lower > 0 ? dayjs.unix(lower).format('YYYY-MM-DD') : 'earliest';
+  const endStr = upper > 0 ? dayjs.unix(upper).format('YYYY-MM-DD') : today;
+  return `${nickname}-${startStr}_${endStr}`;
+}
+
 function exportCSV() {
-  if (rawRowData.length === 0) {
-    toast.warning('当前账号暂无文章可导出');
+  if (globalRowData.length === 0) {
+    toast.warning('当前筛选范围内暂无文章可导出');
     return;
   }
-  const csv = buildArticlesCsv(rawRowData);
+  const csv = buildArticlesCsv(globalRowData);
   const nickname = selectedAccount.value?.nickname ?? 'articles';
-  downloadCsv(`${nickname}-${dayjs().format('YYYY-MM-DD')}`, csv);
-  toast.success(`已导出 ${rawRowData.length} 篇文章为 CSV`);
+  downloadCsv(buildCsvFilename(nickname), csv);
+  toast.success(`已导出 ${globalRowData.length} 篇文章为 CSV`);
 }
 
 // 日期范围筛选（页面局部状态，不持久化）
