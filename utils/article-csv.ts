@@ -43,11 +43,11 @@ export function buildArticlesCsv(
   articles: CsvArticle[],
   formatDate: (unixSeconds: number) => string = defaultCsvDateFormatter
 ): string {
-  const header = '标题,发布日期,链接';
+  const header = '发布日期,文章标题,链接';
   const rows = articles
     .slice()
     .sort((a, b) => (b.update_time ?? 0) - (a.update_time ?? 0))
-    .map(a => [csvEscape(a.title), csvEscape(formatDate(a.update_time)), csvEscape(a.link)].join(','));
+    .map(a => [csvEscape(formatDate(a.update_time)), csvEscape(a.title), csvEscape(a.link)].join(','));
   return '﻿' + [header, ...rows].join('\n');
 }
 

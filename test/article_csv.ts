@@ -49,7 +49,7 @@ const CASES: Case[] = [
     desc: 'buildArticlesCsv:空数组只返回表头 + BOM',
     run: () => {
       const csv = buildArticlesCsv([], FIXED_FORMAT);
-      assert.equal(csv, '﻿标题,发布日期,链接');
+      assert.equal(csv, '﻿发布日期,文章标题,链接');
     },
   },
   {
@@ -59,7 +59,7 @@ const CASES: Case[] = [
         [{ title: '标题A', update_time: JUNE_15, link: 'https://example.com/a' }],
         FIXED_FORMAT
       );
-      assert.equal(csv, '﻿标题,发布日期,链接\n标题A,2025-06-15 00:00:00,https://example.com/a');
+      assert.equal(csv, '﻿发布日期,文章标题,链接\n2025-06-15 00:00:00,标题A,https://example.com/a');
     },
   },
   {
@@ -74,9 +74,9 @@ const CASES: Case[] = [
         FIXED_FORMAT
       );
       const lines = csv.replace(/^﻿/, '').split('\n');
-      assert.equal(lines[1].split(',')[0], '较晚');
-      assert.equal(lines[2].split(',')[0], '中间');
-      assert.equal(lines[3].split(',')[0], '较早');
+      assert.equal(lines[1].split(',')[1], '较晚');
+      assert.equal(lines[2].split(',')[1], '中间');
+      assert.equal(lines[3].split(',')[1], '较早');
     },
   },
   {
@@ -87,7 +87,7 @@ const CASES: Case[] = [
         FIXED_FORMAT
       );
       // 直接断言整段 CSV(行内换行会被保留在引号包裹的字段里,所以不能按 \n 切)
-      assert.equal(csv, '﻿标题,发布日期,链接\n"a,b ""c""\nd",2025-06-15 00:00:00,https://example.com/x');
+      assert.equal(csv, '﻿发布日期,文章标题,链接\n2025-06-15 00:00:00,"a,b ""c""\nd",https://example.com/x');
     },
   },
   {
@@ -106,7 +106,7 @@ const CASES: Case[] = [
     run: () => {
       const csv = buildArticlesCsv([{ title: 'T', update_time: 0, link: 'L' }], FIXED_FORMAT);
       const lines = csv.replace(/^﻿/, '').split('\n');
-      assert.equal(lines[1], 'T,,L');
+      assert.equal(lines[1], ',T,L');
     },
   },
   {
