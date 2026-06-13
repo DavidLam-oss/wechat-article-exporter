@@ -384,7 +384,8 @@ async function switchTableData(fakeid: string) {
   loading.value = true;
   // 切换公众号时把日期范围重置为全量
   articleDateRange.value = 'all';
-  articleDatePoint.value = 0;
+  articleDateStart.value = 0;
+  articleDateEnd.value = 0;
   const articles: Article[] = [];
   const data = await getArticleCache(fakeid, Math.floor(Date.now() / 1000));
   for (const article of data) {
@@ -561,21 +562,36 @@ function isFailedArticle(article: Article): boolean {
 
 // 日期范围筛选（页面局部状态，不持久化）
 const articleDateRange = ref<ArticleDateRange>('all');
-const articleDatePoint = ref<number>(0);
+const articleDateStart = ref<number>(0);
+const articleDateEnd = ref<number>(0);
 
 const DATE_RANGE_OPTIONS = ARTICLE_DATE_RANGE_OPTIONS;
 
 const articleDateRangeLabel = computed(() => {
   const opt = DATE_RANGE_OPTIONS.find(o => o.value === articleDateRange.value);
-  if (!opt) return '全部';
-  if (articleDateRange.value === 'point' && articleDatePoint.value > 0) {
-    return dayjs.unix(articleDatePoint.value).format('YYYY-MM-DD');
+  return opt?.label ?? '全部';
+});
+
+const articleDateStartLabel = computed(() => {
+  return articleDateStart.value > 0 ? dayjs.unix(articleDateStart.value).format('YYYY-MM-DD') : '开始日期';
+});
+
+const articleDateEndLabel = computed(() => {
+  return articleDateEnd.value > 0 ? dayjs.unix(articleDateEnd.value).format('YYYY-MM-DD') : '今天';
+});
+
+watch(articleDateRange, (newRange, _oldRange) => {
+  // 第一次进入「自定义时间」时给 start 一个合理默认值（30 天前），end 留 0（= 今天）
+  if (newRange === 'point' && articleDateStart.value === 0) {
+    articleDateStart.value = dayjs().subtract(30, 'day').startOf('day').unix();
   }
-  return opt.label;
 });
 
 function applyFiltersToGrid() {
-  const { lower, upper } = getArticleDateRangeBounds(articleDateRange.value, articleDatePoint.value, dayjs());
+  const { lower, upper } = getArticleDateRangeBounds(articleDateRange.value, dayjs(), {
+    start: articleDateStart.value,
+    end: articleDateEnd.value,
+  });
   globalRowData = rawRowData.filter(article => {
     if (hideDeleted.value && article.is_deleted) return false;
     return article.update_time >= lower && article.update_time <= upper;
@@ -583,7 +599,7 @@ function applyFiltersToGrid() {
   gridApi.value?.setGridOption('rowData', globalRowData);
 }
 
-watch([articleDateRange, articleDatePoint], () => {
+watch([articleDateRange, articleDateStart, articleDateEnd], () => {
   applyFiltersToGrid();
 });
 </script>
@@ -615,21 +631,33 @@ watch([articleDateRange, articleDatePoint], () => {
                 class="font-mono"
               />
             </USelectMenu>
-            <UPopover
-              v-if="articleDateRange === 'point'"
-              :popper="{ placement: 'bottom-start' }"
-            >
-              <UButton
-                color="white"
-                icon="i-heroicons-calendar-days-20-solid"
-                :label="articleDatePoint > 0 ? dayjs.unix(articleDatePoint).format('YYYY-MM-DD') : '选择日期'"
-                trailing-icon="i-heroicons-chevron-down-20-solid"
-                class="font-mono"
-              />
-              <template #panel="{ close }">
-                <BaseDatePicker v-model="articleDatePoint" is-required @close="close" />
-              </template>
-            </UPopover>
+            <template v-if="articleDateRange === 'point'">
+              <UPopover :popper="{ placement: 'bottom-start' }">
+                <UButton
+                  color="white"
+                  icon="i-heroicons-calendar-days-20-solid"
+                  :label="articleDateStartLabel"
+                  trailing-icon="i-heroicons-chevron-down-20-solid"
+                  class="font-mono"
+                />
+                <template #panel="{ close }">
+                  <BaseDatePicker v-model="articleDateStart" is-required @close="close" />
+                </template>
+              </UPopover>
+              <span class="text-slate-5 font-mono">~</span>
+              <UPopover :popper="{ placement: 'bottom-start' }">
+                <UButton
+                  color="white"
+                  icon="i-heroicons-calendar-days-20-solid"
+                  :label="articleDateEndLabel"
+                  trailing-icon="i-heroicons-chevron-down-20-solid"
+                  class="font-mono"
+                />
+                <template #panel="{ close }">
+                  <BaseDatePicker v-model="articleDateEnd" @close="close" />
+                </template>
+              </UPopover>
+            </template>
           </div>
         </div>
         <div class="flex items-center space-x-2">

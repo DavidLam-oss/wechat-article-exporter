@@ -2,20 +2,24 @@ import { strict as assert } from 'node:assert';
 import dayjs from 'dayjs';
 import {
   ARTICLE_DATE_RANGE_OPTIONS,
+  type ArticleDatePoint,
   type ArticleDateRange,
   getArticleDateRangeBounds,
   // @ts-expect-error -- Node --experimental-strip-types 需要显式 .ts 扩展名；allowImportingTsExtensions 未开启
 } from '../utils/article-date-range.ts';
 
 // 固定参考时间：2026-06-13 12:34:56
-// - "今天" = 2026-06-13
-// - endOf('day') = 2026-06-13 23:59:59 → 1749849599
 const NOW = dayjs('2026-06-13T12:34:56+08:00');
-const TODAY_END = NOW.endOf('day').unix(); // 1749849599
+const TODAY_END = NOW.endOf('day').unix();
+
+const JUNE_1 = dayjs('2025-06-01T00:00:00+08:00').unix();
+const JUNE_1_START = dayjs('2025-06-01T00:00:00+08:00').startOf('day').unix();
+const JUNE_30 = dayjs('2025-06-30T00:00:00+08:00').unix();
+const JUNE_30_END = dayjs('2025-06-30T00:00:00+08:00').endOf('day').unix();
 
 interface Case {
   range: ArticleDateRange;
-  point?: number;
+  point?: ArticleDatePoint;
   expected: { lower: number; upper: number };
   desc: string;
 }
@@ -57,19 +61,47 @@ const CASES: Case[] = [
     expected: { lower: NOW.subtract(1, 'year').startOf('day').unix(), upper: TODAY_END },
     desc: '最近一年：1 年前 00:00 到今天 23:59:59',
   },
-  // 自定义：2025-06-01 → lower = 2025-06-01 00:00:00 = 1748707200
+  // 自定义：start=2025-06-01, end=2025-06-30
   {
     range: 'point',
-    point: dayjs('2025-06-01T00:00:00+08:00').unix(),
-    expected: { lower: dayjs('2025-06-01T00:00:00+08:00').startOf('day').unix(), upper: TODAY_END },
-    desc: '自定义 2025-06-01：从 2025-06-01 00:00 到今天 23:59:59',
+    point: { start: JUNE_1, end: JUNE_30 },
+    expected: { lower: JUNE_1_START, upper: JUNE_30_END },
+    desc: '自定义 2025-06-01 ~ 2025-06-30',
   },
-  // 自定义 point=0：降级为 all
+  // 自定义：只设 start，end 默认今天
   {
     range: 'point',
-    point: 0,
+    point: { start: JUNE_1, end: 0 },
+    expected: { lower: JUNE_1_START, upper: TODAY_END },
+    desc: '自定义 start=2025-06-01，end=0（默认今天）',
+  },
+  // 自定义：只设 end，start 默认无下界
+  {
+    range: 'point',
+    point: { start: 0, end: JUNE_30 },
+    expected: { lower: 0, upper: JUNE_30_END },
+    desc: '自定义 start=0（无下界），end=2025-06-30',
+  },
+  // 自定义：start=end（同一天）
+  {
+    range: 'point',
+    point: { start: JUNE_1, end: JUNE_1 },
+    expected: { lower: JUNE_1_START, upper: dayjs.unix(JUNE_1).endOf('day').unix() },
+    desc: '自定义 start=end=2025-06-01（仅当日）',
+  },
+  // 自定义：start=end=0 退化为全量
+  {
+    range: 'point',
+    point: { start: 0, end: 0 },
     expected: { lower: 0, upper: TODAY_END },
-    desc: '自定义 point=0：降级为 all（下界 0）',
+    desc: '自定义 start=0/end=0（退化为全量）',
+  },
+  // 自定义：不传 point（兜底）
+  {
+    range: 'point',
+    point: undefined,
+    expected: { lower: 0, upper: TODAY_END },
+    desc: '自定义 point=undefined（兜底为全量）',
   },
 ];
 
@@ -88,7 +120,7 @@ function run() {
   let passed = 0;
   let failed = 0;
   for (const c of CASES) {
-    const got = getArticleDateRangeBounds(c.range, c.point ?? 0, NOW);
+    const got = getArticleDateRangeBounds(c.range, NOW, c.point);
     try {
       assert.equal(got.lower, c.expected.lower, `[${c.range}] lower 不匹配`);
       assert.equal(got.upper, c.expected.upper, `[${c.range}] upper 不匹配`);
