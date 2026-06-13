@@ -959,6 +959,7 @@ ${commentHTML}
     const maxlength = (preferences.value as Preferences).exportConfig.maxlength;
 
     const article = await getArticleByLink(articleUrl);
+    const metadata = await getMetadataCache(articleUrl);
     const articleUpdateTime = dayjs.unix(article.update_time);
     const account = this.allAccountInfo.find(account => account.fakeid === article.fakeid);
     if (account && account.nickname) {
@@ -968,6 +969,7 @@ ${commentHTML}
     dirnameTpl = dirnameTpl.replace(/\$\{title}/g, filterInvalidFilenameChars(article.title));
     dirnameTpl = dirnameTpl.replace(/\$\{aid}/g, article.aid);
     dirnameTpl = dirnameTpl.replace(/\$\{author}/g, article.author_name);
+    dirnameTpl = dirnameTpl.replace(/\$\{readNum}/g, String(metadata?.readNum ?? 0));
     dirnameTpl = dirnameTpl.replace(/\$\{YYYY}/g, articleUpdateTime.format('YYYY'));
     dirnameTpl = dirnameTpl.replace(/\$\{MM}/g, articleUpdateTime.format('MM'));
     dirnameTpl = dirnameTpl.replace(/\$\{DD}/g, articleUpdateTime.format('DD'));
