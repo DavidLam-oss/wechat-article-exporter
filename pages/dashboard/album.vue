@@ -36,6 +36,13 @@
               @click="fetchAllArticles"
               >抓取全部文章链接</UButton
             >
+            <UButton
+              color="white"
+              icon="i-heroicons-table-cells"
+              :disabled="!selectedAccount || !selectedAlbum || albumArticles.length === 0"
+              @click="exportAlbumCsv"
+              >导出 CSV</UButton
+            >
           </div>
         </div>
         <div class="flex items-center space-x-2">
@@ -126,6 +133,7 @@ import { ArrowDownNarrowWide, ArrowUpNarrowWide, Loader } from 'lucide-vue-next'
 import { sleep } from '#shared/utils/helpers';
 import { request } from '#shared/utils/request';
 import AccountSelectorForAlbum from '~/components/selector/AccountSelectorForAlbum.vue';
+import toastFactory from '~/composables/toast';
 import { useDownloadAlbum } from '~/composables/useBatchDownload';
 import { websiteName } from '~/config';
 import { type MpAccount } from '~/store/v2/info';
@@ -133,6 +141,7 @@ import type { AppMsgAlbumResult, ArticleItem, BaseInfo } from '~/types/album';
 import type { AppMsgAlbumInfo, DownloadableArticle } from '~/types/types';
 import { gotoLink } from '~/utils';
 import { formatAlbumTime } from '~/utils/album';
+import { buildArticlesCsv, downloadCsv } from '~/utils/article-csv';
 
 useHead({
   title: `合集下载 | ${websiteName}`,
@@ -313,6 +322,23 @@ async function fetchAllArticles() {
     await sleep(500);
   }
   fetchAllArticlesBtnLoading.value = false;
+}
+
+// 导出当前已加载合集文章为 CSV
+const toast = toastFactory();
+function exportAlbumCsv() {
+  if (albumArticles.length === 0) {
+    toast.warning('当前合集暂无文章可导出');
+    return;
+  }
+  const rows = albumArticles.map(a => ({
+    title: a.title,
+    update_time: +a.create_time,
+    link: a.url,
+  }));
+  const csv = buildArticlesCsv(rows);
+  downloadCsv(downloadFileName.value, csv);
+  toast.success(`已导出 ${rows.length} 篇文章为 CSV`);
 }
 </script>
 
