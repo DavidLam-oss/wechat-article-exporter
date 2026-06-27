@@ -61,6 +61,18 @@ const preferences = usePreferences();
 const toast = toastFactory();
 const inputUrl = ref('');
 
+const showBatchImportModal = ref(false);
+const activeTab = ref(0);
+const batchInputUrls = ref('');
+const importFileRef = ref<HTMLInputElement | null>(null);
+const csvFileName = ref('');
+const csvParsedData = ref<{ title: string; link: string; publishTime: string }[]>([]);
+
+const importTabs = [
+  { label: 'CSV 文件导入', icon: 'i-heroicons-document-text' },
+  { label: '粘贴文本导入', icon: 'i-heroicons-clipboard-document-list' },
+];
+
 const globalRowData = useLocalStorage<SingleArticleRow[]>('single-article:rows', []);
 if (!globalRowData.value) {
   globalRowData.value = [];
@@ -316,6 +328,212 @@ async function addArticle() {
     await downloadRows([row], { silent: true });
   } catch (error: any) {
     toast.error('添加失败', error?.message || '链接格式不正确');
+  }
+}
+
+// 轻量级 CSV 解析器
+function parseCSV(text: string): string[][] {
+  const lines: string[][] = [];
+  let row: string[] = [];
+  let cell = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const nextChar = text[i + 1];
+    if (inQuotes) {
+      if (char === '"') {
+        if (nextChar === '"') {
+          cell += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        cell += char;
+      }
+    } else {
+      if (char === '"') {
+        inQuotes = true;
+      } else if (char === ',') {
+        row.push(cell);
+        cell = '';
+      } else if (char === '\n' || char === '\r') {
+        row.push(cell);
+        if (row.some(c => c.trim() !== '')) {
+          lines.push(row);
+        }
+        row = [];
+        cell = '';
+        if (char === '\r' && nextChar === '\n') {
+          i++;
+        }
+      } else {
+        cell += char;
+      }
+    }
+  }
+  if (cell || row.length > 0) {
+    row.push(cell);
+    lines.push(row);
+  }
+  return lines;
+}
+
+// 处理 CSV 文件选择
+function triggerFileSelect() {
+  importFileRef.value?.click();
+}
+
+async function handleCsvFileChange(event: Event) {
+  const files = (event.target as HTMLInputElement).files;
+  if (!files || files.length === 0) return;
+  const file = files[0];
+  csvFileName.value = file.name;
+
+  const text = await file.text();
+  const rawRows = parseCSV(text);
+
+  let startIndex = 0;
+  if (rawRows.length > 0) {
+    // 检测首行是否是表头：如果第三列 URL 不包含公众号域名，则认为是表头
+    const firstRowUrl = rawRows[0][2] || '';
+    if (!firstRowUrl.includes('mp.weixin.qq.com')) {
+      startIndex = 1;
+    }
+  }
+
+  const parsed: { title: string; link: string; publishTime: string }[] = [];
+  for (let i = startIndex; i < rawRows.length; i++) {
+    const row = rawRows[i];
+    if (row.length < 3) continue;
+    const publishTime = row[0]?.trim();
+    const title = row[1]?.trim();
+    const link = row[2]?.trim();
+    if (link && link.includes('mp.weixin.qq.com')) {
+      parsed.push({ publishTime, title, link });
+    }
+  }
+  csvParsedData.value = parsed;
+}
+
+// 支持传入标题和发布时间生成 Row
+function createRowWithMeta(url: string, title?: string, publishTime?: string): SingleArticleRow {
+  const { fakeid, mid, idx } = parseUrlParams(url);
+  let timestamp = dayjs().unix();
+  if (publishTime) {
+    const parsed = dayjs(publishTime);
+    if (parsed.isValid()) {
+      timestamp = parsed.unix();
+    }
+  }
+  const aid = `${mid}_${idx}`;
+  const generatedId =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random()}`;
+  return {
+    id: generatedId,
+    fakeid,
+    link: url,
+    title: title || '未命名文章',
+    author_name: '--',
+    digest: '',
+    create_time: timestamp,
+    update_time: timestamp,
+    appmsgid: mid,
+    itemidx: idx,
+    aid,
+    contentDownload: false,
+    commentDownload: false,
+    accountName: null,
+    _status: '',
+    is_deleted: false,
+  };
+}
+
+// 统一批量导入逻辑
+async function executeBatchImport() {
+  let itemsToImport: { url: string; title?: string; publishTime?: string }[] = [];
+  let invalidCount = 0;
+  let dupCount = 0;
+
+  // 优化：将当前列表中已存在的链接转为 Set 提升去重匹配效率 (O(1))
+  const existingLinks = new Set(globalRowData.value.map(row => row.link));
+  const importedLinks = new Set<string>();
+
+  if (activeTab.value === 0) {
+    // CSV 导入
+    if (csvParsedData.value.length === 0) {
+      toast.info('提示', '请先选择并解析有效的 CSV 文件');
+      return;
+    }
+    for (const item of csvParsedData.value) {
+      try {
+        const normalized = normalizeUrl(item.link);
+        if (existingLinks.has(normalized) || importedLinks.has(normalized)) {
+          dupCount++;
+          continue;
+        }
+        importedLinks.add(normalized);
+        itemsToImport.push({ url: normalized, title: item.title, publishTime: item.publishTime });
+      } catch (e) {
+        invalidCount++;
+      }
+    }
+  } else {
+    // 文本粘贴导入
+    const lines = batchInputUrls.value.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      try {
+        const normalized = normalizeUrl(trimmed);
+        if (existingLinks.has(normalized) || importedLinks.has(normalized)) {
+          dupCount++;
+          continue;
+        }
+        importedLinks.add(normalized);
+        itemsToImport.push({ url: normalized });
+      } catch (e) {
+        invalidCount++;
+      }
+    }
+  }
+
+  if (itemsToImport.length === 0) {
+    let msg = '没有合法的、不重复的链接可导入。';
+    if (invalidCount > 0) msg += `（过滤了 ${invalidCount} 个非法链接）`;
+    if (dupCount > 0) msg += `（过滤了 ${dupCount} 个已存在或重复的链接）`;
+    toast.info('提示', msg);
+    return;
+  }
+
+  const newRows = itemsToImport.map(item => createRowWithMeta(item.url, item.title, item.publishTime));
+
+  try {
+    // 优化：使用 Dexie bulkPut 进行高性能批量写入
+    const articles = newRows.map(row => buildVirtualArticle(row));
+    const keys = newRows.map(row => `${row.fakeid}:${row.aid}`);
+    await db.article.bulkPut(articles, keys);
+
+    globalRowData.value = [...newRows, ...globalRowData.value];
+    refreshGrid();
+
+    // 清空状态
+    batchInputUrls.value = '';
+    csvFileName.value = '';
+    csvParsedData.value = [];
+    if (importFileRef.value) importFileRef.value.value = '';
+    showBatchImportModal.value = false;
+
+    let msg = `成功导入了 ${newRows.length} 条文章链接！`;
+    if (invalidCount > 0 || dupCount > 0) {
+      msg += ` 过滤了 ${invalidCount} 个非法链接，${dupCount} 个重复链接。`;
+    }
+    toast.success('导入成功', msg);
+  } catch (error: any) {
+    toast.error('导入失败', error?.message || '未知错误');
   }
 }
 
@@ -594,6 +812,7 @@ async function removeRows() {
         <div class="flex flex-1 gap-3">
           <UInput v-model="inputUrl" placeholder="请输入公众号文章链接" class="flex-1" @keyup.enter="addArticle" />
           <UButton color="blue" @click="addArticle">添加</UButton>
+          <UButton color="green" variant="soft" @click="showBatchImportModal = true">批量导入</UButton>
         </div>
         <div class="flex items-center gap-3">
           <ButtonGroup
@@ -664,5 +883,73 @@ async function removeRows() {
     </div>
 
     <PreviewArticle ref="previewArticleRef" />
+
+    <!-- 批量导入弹窗 -->
+    <UModal v-model="showBatchImportModal" prevent-close :ui="{ width: 'sm:max-w-lg' }">
+      <UCard :ui="{ divide: 'y-divide' }">
+        <template #header>
+          <div class="flex items-center justify-between">
+            <h3 class="text-base font-semibold leading-6 text-gray-900 dark:text-white">
+              批量导入文章链接
+            </h3>
+            <UButton color="gray" variant="ghost" icon="i-heroicons-x-mark-20-solid" class="-my-1" @click="showBatchImportModal = false" />
+          </div>
+        </template>
+
+        <div class="space-y-4">
+          <UTabs v-model="activeTab" :items="importTabs" class="w-full" />
+          
+          <!-- CSV 导入面板 -->
+          <div v-if="activeTab === 0" class="space-y-3">
+            <div class="p-3 bg-gray-50 dark:bg-gray-800 rounded-md border border-gray-100 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400 space-y-1">
+              <p class="font-medium text-gray-700 dark:text-gray-300">CSV 文件格式说明：</p>
+              <p>1. 必须包含至少 3 列，按顺序排列：<b>发布时间, 标题, url</b></p>
+              <p>2. 发布时间支持多种格式（如 <i>2023-10-23 12:00:00</i>）</p>
+              <p>3. 自动识别并跳过首行标题行</p>
+            </div>
+            
+            <div class="flex items-center gap-3">
+              <input
+                ref="importFileRef"
+                type="file"
+                accept=".csv"
+                class="hidden"
+                @change="handleCsvFileChange"
+              />
+              <UButton color="white" icon="i-heroicons-folder-open" @click="triggerFileSelect">
+                选择 CSV 文件
+              </UButton>
+              <span class="text-sm text-gray-500 truncate max-w-[240px]">
+                {{ csvFileName || '未选择文件' }}
+              </span>
+            </div>
+            
+            <p v-if="csvParsedData.length > 0" class="text-xs text-green-600 dark:text-green-400">
+              已成功解析出 {{ csvParsedData.length }} 条公众号链接，点击下方「确认导入」即可存入。
+            </p>
+          </div>
+
+          <!-- 粘贴文本导入面板 -->
+          <div v-else class="space-y-3">
+            <p class="text-xs text-gray-500">
+              请输入公众号文章链接，每行一个。系统会自动提取 `__biz` 等标识进行格式去重。
+            </p>
+            <UTextarea
+              v-model="batchInputUrls"
+              :rows="8"
+              placeholder="https://mp.weixin.qq.com/s/...&#10;https://mp.weixin.qq.com/s/..."
+              autofocus
+            />
+          </div>
+        </div>
+
+        <template #footer>
+          <div class="flex justify-end gap-3">
+            <UButton color="gray" variant="ghost" @click="showBatchImportModal = false">取消</UButton>
+            <UButton color="blue" @click="executeBatchImport">确认导入</UButton>
+          </div>
+        </template>
+      </UCard>
+    </UModal>
   </div>
 </template>
