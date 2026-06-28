@@ -436,6 +436,8 @@ const contentNotDownloadedCount = computed(() => {
 const {
   loading: downloadBtnLoading,
   completed_count: downloadCompletedCount,
+  failed_count: downloadFailedCount,
+  deleted_count: downloadDeletedCount,
   total_count: downloadTotalCount,
   download,
   stop: stopDownload,
@@ -709,7 +711,11 @@ watch([articleDateRange, articleDateStart, articleDateEnd], () => {
               :disabled="!selectedAccount"
               color="white"
               class="font-mono"
-              :label="downloadBtnLoading ? `抓取中 ${downloadCompletedCount}/${downloadTotalCount}` : '抓取'"
+              :label="
+                downloadBtnLoading
+                  ? `抓取中 (成功:${downloadCompletedCount} / 失败:${downloadFailedCount} / 总数:${downloadTotalCount})`
+                  : '抓取'
+              "
               trailing-icon="i-heroicons-chevron-down-20-solid"
             />
           </ButtonGroup>

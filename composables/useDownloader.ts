@@ -29,6 +29,8 @@ export default (options: Partial<DownloadArticleOptions> = {}) => {
 
   const loading = ref(false);
   const completed_count = ref(0);
+  const failed_count = ref(0);
+  const deleted_count = ref(0);
   const total_count = ref(0);
 
   let downloader: Downloader | null = null;
@@ -50,6 +52,8 @@ export default (options: Partial<DownloadArticleOptions> = {}) => {
           `进度: (进行中:${status.pending.length} / 已完成:${status.completed.length} / 已失败:${status.failed.length} / 已删除:${status.deleted.length})`
         );
         completed_count.value = status.completed.length;
+        failed_count.value = status.failed.length;
+        deleted_count.value = status.deleted.length;
         if (success && typeof options.onContent === 'function') {
           options.onContent(url);
         }
@@ -67,6 +71,8 @@ export default (options: Partial<DownloadArticleOptions> = {}) => {
       downloader.on('download:begin', () => {
         console.debug('开始抓取【文章内容】...');
         completed_count.value = 0;
+        failed_count.value = 0;
+        deleted_count.value = 0;
         total_count.value = urls.length;
       });
       downloader.on('download:finish', (seconds: number, status: DownloaderStatus) => {
@@ -107,6 +113,8 @@ export default (options: Partial<DownloadArticleOptions> = {}) => {
           `进度: (进行中:${status.pending.length} / 已完成:${status.completed.length} / 已失败:${status.failed.length} / 已删除:${status.deleted.length})`
         );
         completed_count.value = status.completed.length;
+        failed_count.value = status.failed.length;
+        deleted_count.value = status.deleted.length;
       });
       downloader.on('download:metadata', (url: string, metadata: Metadata) => {
         if (typeof options.onMetadata === 'function') {
@@ -126,6 +134,8 @@ export default (options: Partial<DownloadArticleOptions> = {}) => {
       downloader.on('download:begin', () => {
         console.debug('开始抓取【阅读量】...');
         completed_count.value = 0;
+        failed_count.value = 0;
+        deleted_count.value = 0;
         total_count.value = urls.length;
       });
       downloader.on('download:finish', (seconds: number, status: DownloaderStatus) => {
@@ -163,6 +173,8 @@ export default (options: Partial<DownloadArticleOptions> = {}) => {
           `进度: (进行中:${status.pending.length} / 已完成:${status.completed.length} / 已失败:${status.failed.length} / 已删除:${status.deleted.length})`
         );
         completed_count.value = status.completed.length;
+        failed_count.value = status.failed.length;
+        deleted_count.value = status.deleted.length;
         if (success && typeof options.onComment === 'function') {
           options.onComment(url);
         }
@@ -170,6 +182,8 @@ export default (options: Partial<DownloadArticleOptions> = {}) => {
       downloader.on('download:begin', () => {
         console.debug('开始抓取【留言内容】...');
         completed_count.value = 0;
+        failed_count.value = 0;
+        deleted_count.value = 0;
         total_count.value = urls.length;
       });
       downloader.on('download:finish', (seconds: number, status: DownloaderStatus) => {
@@ -207,10 +221,13 @@ export default (options: Partial<DownloadArticleOptions> = {}) => {
           `进度: (进行中:${status.pending.length} / 已完成:${status.completed.length} / 已失败:${status.failed.length})`
         );
         completed_count.value = status.completed.length;
+        failed_count.value = status.failed.length;
       });
       downloader.on('download:begin', () => {
         console.debug('开始修复 fakeid ...');
         completed_count.value = 0;
+        failed_count.value = 0;
+        deleted_count.value = 0;
         total_count.value = urls.length;
       });
       downloader.on('fix:fakeid', (url: string, fakeid: string) => {
@@ -266,6 +283,8 @@ export default (options: Partial<DownloadArticleOptions> = {}) => {
   return {
     loading,
     completed_count,
+    failed_count,
+    deleted_count,
     total_count,
     download,
     stop,
