@@ -6,6 +6,7 @@ const defaultOptions: Partial<Preferences> = {
   hideDeleted: true,
   privateProxyList: [],
   privateProxyAuthorization: '',
+  enableLocalServerProxy: true,
   exportConfig: {
     dirname: '${title}',
     maxlength: 0,

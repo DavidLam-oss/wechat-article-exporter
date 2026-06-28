@@ -34,8 +34,20 @@ export class BaseDownloader {
     this.validateInputs(urls);
 
     const privateProxies = (preferences.value as Preferences).privateProxyList || [];
-    // 优先使用私有代理，公共代理作为兜底
-    const proxies = privateProxies.length > 0 ? [...privateProxies, ...PUBLIC_PROXY_LIST] : PUBLIC_PROXY_LIST;
+    // 优先使用私有代理，若无则根据配置决定使用本地服务器代理或公共代理
+    let proxies: string[] = [];
+    if (privateProxies.length > 0) {
+      proxies = [...privateProxies];
+      if ((preferences.value as Preferences).enableLocalServerProxy !== false) {
+        proxies.push('/api/web/proxy');
+      }
+    } else {
+      if ((preferences.value as Preferences).enableLocalServerProxy !== false) {
+        proxies = ['/api/web/proxy'];
+      } else {
+        proxies = PUBLIC_PROXY_LIST;
+      }
+    }
 
     this.urls = [...urls].reverse();
     this.pending = new Set();

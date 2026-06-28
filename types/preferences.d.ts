@@ -9,6 +9,9 @@ export interface Preferences {
   // 私有代理认证密钥
   privateProxyAuthorization: string;
 
+  // 允许使用本地服务器代理下载内容
+  enableLocalServerProxy?: boolean;
+
   // 导出配置
   exportConfig: ExportConfig;
 
