@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
 import mime from 'mime';
+import { parseCgiDataNew } from '#shared/utils/html';
 import { formatTimeStamp, sleep } from '#shared/utils/helpers';
 import { request } from '#shared/utils/request';
 import { getComment } from '~/apis';
@@ -393,70 +394,57 @@ export async function packHTMLAssets(fakeid: string, html: string, title: string
     readNum = parseInt(readNumMatchResult.groups.read_num, 10);
   }
 
-  // 图片分享消息
-  const $js_image_desc = $jsArticleContent.querySelector('#js_image_desc');
-  if ($js_image_desc) {
-    bodyCls += 'pages_skin_pc page_share_img';
+  // 图片分享消息：通过 parseCgiDataNew 拿到 cgiData，从中取 picture_page_info_list 和 desc
+  // （不再用 window.picture_page_info_list / __QMTPL_SSR_DATA__ 的正则+eval 路径——
+  //   旧正则 `window\.picture_page_info_list\s*=.+\.slice\(0,\s*20\);` 对新老样本都不匹配。）
+  function decode_html(data: string, encode: boolean) {
+    const replace = [
+      '&#39;',
+      "'",
+      '&quot;',
+      '"',
+      '&nbsp;',
+      ' ',
+      '&gt;',
+      '>',
+      '&lt;',
+      '<',
+      '&yen;',
+      '¥',
+      '&amp;',
+      '&',
+    ];
+    const replaceReverse = [
+      '&',
+      '&amp;',
+      '¥',
+      '&yen;',
+      '<',
+      '&lt;',
+      '>',
+      '&gt;',
+      ' ',
+      '&nbsp;',
+      '"',
+      '&quot;',
+      "'",
+      '&#39;',
+    ];
 
-    function decode_html(data: string, encode: boolean) {
-      const replace = [
-        '&#39;',
-        "'",
-        '&quot;',
-        '"',
-        '&nbsp;',
-        ' ',
-        '&gt;',
-        '>',
-        '&lt;',
-        '<',
-        '&yen;',
-        '¥',
-        '&amp;',
-        '&',
-      ];
-      const replaceReverse = [
-        '&',
-        '&amp;',
-        '¥',
-        '&yen;',
-        '<',
-        '&lt;',
-        '>',
-        '&gt;',
-        ' ',
-        '&nbsp;',
-        '"',
-        '&quot;',
-        "'",
-        '&#39;',
-      ];
-
-      let target = encode ? replaceReverse : replace;
-      let str = data;
-      for (let i = 0; i < target.length; i += 2) {
-        str = str.replace(new RegExp(target[i], 'g'), target[i + 1]);
-      }
-      return str;
+    let target = encode ? replaceReverse : replace;
+    let str = data;
+    for (let i = 0; i < target.length; i += 2) {
+      str = str.replace(new RegExp(target[i], 'g'), target[i + 1]);
     }
+    return str;
+  }
 
-    const qmtplMatchResult = html.match(/(?<code>window\.__QMTPL_SSR_DATA__\s*=\s*\{.+?)<\/script>/s);
-    if (qmtplMatchResult && qmtplMatchResult.groups && qmtplMatchResult.groups.code) {
-      const code = qmtplMatchResult.groups.code;
-      eval(code);
-      const data = (window as any).__QMTPL_SSR_DATA__;
-      let desc = data.desc.replace(/\r/g, '').replace(/\n/g, '<br>').replace(/\s/g, '&nbsp;');
-      desc = decode_html(desc, false);
-      $js_image_desc.innerHTML = desc;
-
-      $jsArticleContent.querySelector('#js_top_profile')!.classList.remove('profile_area_hide');
-    }
-    const pictureMatchResult = html.match(/(?<code>window\.picture_page_info_list\s*=.+\.slice\(0,\s*20\);)/s);
-    if (pictureMatchResult && pictureMatchResult.groups && pictureMatchResult.groups.code) {
-      const code = pictureMatchResult.groups.code;
-      eval(code);
-      const picture_page_info_list = (window as any).picture_page_info_list;
-      const containerEl = $jsArticleContent.querySelector('#js_share_content_page_hd')!;
+  const cgiData = await parseCgiDataNew(html);
+  const picture_page_info_list: any[] | undefined = cgiData?.picture_page_info_list;
+  if (Array.isArray(picture_page_info_list) && picture_page_info_list.length > 0) {
+    // 是图片分享文章，把图片写入 #js_share_content_page_hd
+    const containerEl = $jsArticleContent.querySelector('#js_share_content_page_hd');
+    if (containerEl) {
       let innerHTML =
         '<div style="display: flex;flex-direction: column;align-items: center;gap: 10px;padding-block: 20px;">';
       for (const picture of picture_page_info_list) {
@@ -464,6 +452,22 @@ export async function packHTMLAssets(fakeid: string, html: string, title: string
       }
       innerHTML += '</div>';
       containerEl.innerHTML = innerHTML;
+    }
+
+    const desc: string = cgiData.desc || cgiData.content_noencode || '';
+    if (desc) {
+      // #js_image_desc 是 Vue 运行时注入的元素，缓存的原始 HTML 里没有 —— 按需兜底创建
+      let $imageDesc = $jsArticleContent.querySelector('#js_image_desc') as HTMLElement | null;
+      if (!$imageDesc) {
+        $imageDesc = document.createElement('p');
+        $imageDesc.id = 'js_image_desc';
+        $jsArticleContent.querySelector('#js_base_container')?.appendChild($imageDesc);
+      }
+      let processedDesc = desc.replace(/\r/g, '').replace(/\n/g, '<br>').replace(/\s/g, '&nbsp;');
+      processedDesc = decode_html(processedDesc, false);
+      $imageDesc.innerHTML = processedDesc;
+
+      bodyCls += ' pages_skin_pc page_share_img';
     }
   }
 

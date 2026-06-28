@@ -54,6 +54,8 @@ const turndownService = new TurndownService({
   bulletListMarker: '-', // 无序列表标记
   codeBlockStyle: 'fenced', // 代码块样式：fenced (```) 或 indented
 });
+// 渲染后的 html 含 <head> 里的 <title> 和 <style>，里面的内容对 markdown 没用还会污染首行
+turndownService.remove(['title', 'style']);
 
 // 监听 HTML 变化，实时转换为 Markdown
 watch(

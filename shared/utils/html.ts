@@ -138,7 +138,7 @@ function extractCgiScript(html: string) {
     return content.includes('window.cgiDataNew = {');
   });
 
-  if (scriptEl.length !== 1) {
+  if (scriptEl.length === 0) {
     console.warn('未找到包含 cgiDataNew 的目标 script');
     return null;
   }
