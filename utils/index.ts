@@ -666,11 +666,19 @@ export async function packHTMLAssets(fakeid: string, html: string, title: string
       return 0;
     }
 
+    const urlWithoutAmp = url.replace(/&amp;/g, '&');
+
     // 检查缓存，防止重复写入相同的文件
-    if (downloadedUrls.has(url)) {
-      const cachedFilename = downloadedUrls.get(url)!;
+    if (downloadedUrls.has(urlWithoutAmp)) {
+      const cachedFilename = downloadedUrls.get(urlWithoutAmp)!;
       img.src = `./assets/${cachedFilename}`;
       img.removeAttribute('data-src');
+
+      // 同时替换外层包裹的 A 标签（缩略图或查看原图）
+      const parentA = img.closest('a');
+      if (parentA) {
+        parentA.href = `./assets/${cachedFilename}`;
+      }
       return 0;
     }
 
@@ -710,11 +718,17 @@ export async function packHTMLAssets(fakeid: string, html: string, title: string
     const ext = mime.getExtension(imgData.type) || 'png';
     const filename = `${uuid}.${ext}`;
     zip.file(`assets/${filename}`, imgData);
-    downloadedUrls.set(url, filename);
+    downloadedUrls.set(urlWithoutAmp, filename);
 
     // 改写html中的引用路径，指向本地图片文件
     img.src = `./assets/${filename}`;
     img.removeAttribute('data-src');
+
+    // 同时替换外层包裹的 A 标签
+    const parentA = img.closest('a');
+    if (parentA) {
+      parentA.href = `./assets/${filename}`;
+    }
 
     return imgData.size;
   };

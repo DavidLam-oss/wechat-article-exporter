@@ -294,7 +294,8 @@ export function renderPictureCarouselHTML(pictures: Array<{ cdn_url: string; wid
   // 限制比例在 0.75 到 1.3333 之间以匹配微信官方习惯
   ratio = Math.min(Math.max(ratio, 0.75), 1.3333);
 
-  let html = `<div class="picture-carousel-wrapper" style="--first-img-ratio: ${ratio.toFixed(4)};">`;
+  let html = '<div class="picture-carousel-container">';
+  html += `<div class="picture-carousel-wrapper" style="--first-img-ratio: ${ratio.toFixed(4)};">`;
   html += '<button type="button" class="picture-arrow picture-arrow-prev" aria-label="上一张">‹</button>';
   html += '<div class="picture-carousel">';
   pictures.forEach((picture, idx) => {
@@ -308,8 +309,50 @@ export function renderPictureCarouselHTML(pictures: Array<{ cdn_url: string; wid
   html += '</div>';
   html += '<button type="button" class="picture-arrow picture-arrow-next" aria-label="下一张">›</button>';
   html += '</div>';
-  // 内联脚本：箭头点击触发 scrollBy。scroll-snap-type: x mandatory 自动吸附下一张。
-  html += '<script>(function(){document.querySelectorAll(".picture-carousel-wrapper").forEach(function(w){var c=w.querySelector(".picture-carousel");var p=w.querySelector(".picture-arrow-prev");var n=w.querySelector(".picture-arrow-next");if(!c||!p||!n)return;function step(d){c.scrollBy({left:d*c.clientWidth,behavior:"smooth"});}p.addEventListener("click",function(){step(-1);});n.addEventListener("click",function(){step(1);});});})();</script>';
+
+  // 渲染底部缩略图预览条
+  html += '<div class="picture-thumbnails">';
+  pictures.forEach((picture, idx) => {
+    const url = String(picture?.cdn_url || '').replace(/&amp;/g, '&');
+    html += `<div class="thumb-item${idx === 0 ? ' active' : ''}" data-index="${idx}">
+  <img src="${url}" alt="缩略图${idx + 1}" />
+</div>`;
+  });
+  html += '</div>';
+  html += '</div>';
+
+  // 内联脚本：箭头点击 + 缩略图联动 + 滚动高亮
+  html += `<script>(function(){
+    document.querySelectorAll(".picture-carousel-container").forEach(function(container){
+      var c = container.querySelector(".picture-carousel");
+      var p = container.querySelector(".picture-arrow-prev");
+      var n = container.querySelector(".picture-arrow-next");
+      var thumbs = container.querySelectorAll(".thumb-item");
+      if(!c) return;
+
+      function updateActive(idx) {
+        thumbs.forEach(function(t, i) {
+          if (i === idx) t.classList.add("active");
+          else t.classList.remove("active");
+        });
+      }
+
+      if (p) p.addEventListener("click", function(){ c.scrollBy({left:-c.clientWidth,behavior:"smooth"}); });
+      if (n) n.addEventListener("click", function(){ c.scrollBy({left:c.clientWidth,behavior:"smooth"}); });
+
+      thumbs.forEach(function(t, i){
+        t.addEventListener("click", function(){
+          c.scrollTo({left: i * c.clientWidth, behavior:"smooth"});
+        });
+      });
+
+      c.addEventListener("scroll", function(){
+        var idx = Math.round(c.scrollLeft / c.clientWidth);
+        updateActive(idx);
+      });
+    });
+  })();</script>`;
+
   return html;
 }
 
@@ -318,15 +361,16 @@ export function renderPictureCarouselHTML(pictures: Array<{ cdn_url: string; wid
  * 集中维护，避免在 renderer.ts / Exporter.ts / utils/index.ts 三处重复硬编码。
  */
 export const carouselCSS = `
-.picture-carousel-wrapper {
-    position: relative;
+.picture-carousel-container {
     max-width: 650px;
     margin: 20px auto;
+}
+.picture-carousel-wrapper {
+    position: relative;
     aspect-ratio: var(--first-img-ratio, 0.75);
     background: #000;
     border-radius: 12px;
-    overflow: hidden;
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+    overflow: visible;
 }
 .picture-carousel {
     display: flex;
@@ -339,6 +383,7 @@ export const carouselCSS = `
     scrollbar-width: none;
     margin: 0;
     padding: 0;
+    border-radius: 12px;
 }
 .picture-carousel::-webkit-scrollbar {
     display: none;
@@ -381,13 +426,12 @@ export const carouselCSS = `
     top: 50%;
     transform: translateY(-50%);
     z-index: 10;
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.25);
-    border: none;
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
+    background: rgba(0, 0, 0, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     font-size: 24px;
     color: #fff;
     cursor: pointer;
@@ -399,13 +443,54 @@ export const carouselCSS = `
     transition: all 0.2s ease;
 }
 .picture-arrow:hover {
-    background: rgba(255, 255, 255, 0.45);
+    background: rgba(0, 0, 0, 0.85);
+    transform: translateY(-50%) scale(1.05);
 }
 .picture-arrow:active {
-    transform: translateY(-50%) scale(0.9);
+    transform: translateY(-50%) scale(0.95);
 }
-.picture-arrow-prev { left: 16px; }
-.picture-arrow-next { right: 16px; }
+@media (min-width: 768px) {
+    .picture-arrow-prev { left: -22px; }
+    .picture-arrow-next { right: -22px; }
+}
+@media (max-width: 767px) {
+    .picture-arrow-prev { left: 8px; }
+    .picture-arrow-next { right: 8px; }
+}
+
+.picture-thumbnails {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 12px;
+    overflow-x: auto;
+    padding: 4px;
+}
+.thumb-item {
+    width: 50px;
+    height: 50px;
+    border-radius: 6px;
+    overflow: hidden;
+    cursor: pointer;
+    border: 2px solid transparent;
+    opacity: 0.6;
+    transition: all 0.2s ease;
+    background: #f0f0f0;
+    flex-shrink: 0;
+}
+.thumb-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.thumb-item.active {
+    border-color: #07c160;
+    opacity: 1;
+    transform: scale(1.05);
+}
+.thumb-item:hover {
+    opacity: 0.9;
+}
 `;
 
 /**

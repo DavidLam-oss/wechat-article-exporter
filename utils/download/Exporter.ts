@@ -981,17 +981,37 @@ export class Exporter extends BaseDownloader {
       }
     }
 
-    // 替换图片路径为本地路径
+    // 替换图片路径和其包裹的 A 标签链接为本地路径
     const imgs = document.querySelectorAll<HTMLImageElement>('img');
     for (const img of imgs) {
       const imgUrl = img.getAttribute('data-src') || img.getAttribute('src');
-      if (imgUrl && urlmap.has(imgUrl)) {
-        img.src = urlmap.get(imgUrl)!;
-      } else {
-        // 如果不下载图片（或者下载失败），需要将 src 指向微信原始的 data-src CDN 链接，否则在 no-referrer 下展示的是空白占位图
-        const dataSrc = img.getAttribute('data-src');
-        if (dataSrc) {
-          img.src = dataSrc;
+      if (imgUrl) {
+        const urlWithoutAmp = imgUrl.replace(/&amp;/g, '&');
+        let localPath = '';
+        
+        // 模糊匹配 urlmap 中的 key（忽略 & 和 &amp; 的差异）
+        for (const [key, value] of urlmap.entries()) {
+          if (key.replace(/&amp;/g, '&') === urlWithoutAmp) {
+            localPath = value;
+            break;
+          }
+        }
+
+        if (localPath) {
+          img.src = localPath;
+          img.removeAttribute('data-src'); // 替换成功后移除 data-src 避免干扰
+
+          // 同时替换外层包裹的 A 标签（在新轮播组件中用于查看原图，以及缩略图）
+          const parentA = img.closest('a');
+          if (parentA) {
+            parentA.href = localPath;
+          }
+        } else {
+          // 下载失败或者未开启下载时，降级使用 CDN 链接
+          const dataSrc = img.getAttribute('data-src');
+          if (dataSrc) {
+            img.src = dataSrc;
+          }
         }
       }
     }
