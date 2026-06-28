@@ -78,6 +78,23 @@ if (!globalRowData.value) {
   globalRowData.value = [];
 }
 
+const DOWNLOAD_FILTER_OPTIONS = [
+  { label: '所有文章', value: 'all' },
+  { label: '内容已下载', value: 'downloaded' },
+  { label: '内容未下载', value: 'not_downloaded' },
+];
+const downloadFilter = ref<'all' | 'downloaded' | 'not_downloaded'>('all');
+
+const displayedRowData = computed(() => {
+  if (downloadFilter.value === 'all') {
+    return globalRowData.value;
+  }
+  if (downloadFilter.value === 'downloaded') {
+    return globalRowData.value.filter(row => row.contentDownload);
+  }
+  return globalRowData.value.filter(row => !row.contentDownload);
+});
+
 const columnDefs = ref<ColDef[]>([
   {
     headerName: 'fakeid',
@@ -156,6 +173,17 @@ const columnDefs = ref<ColDef[]>([
     filter: 'agSetColumnFilter',
     filterParams: createBooleanColumnFilterParams('已下载', '未下载'),
     minWidth: 150,
+    cellClass: 'flex justify-center items-center',
+  },
+  {
+    headerName: '文章状态',
+    field: '_status',
+    valueFormatter: (p: ValueFormatterParams) => p.value || '未抓取',
+    filter: 'agSetColumnFilter',
+    filterParams: {
+      valueFormatter: (p: ValueFormatterParams) => p.value || '未抓取',
+    },
+    minWidth: 120,
     cellClass: 'flex justify-center items-center',
   },
   {
@@ -239,7 +267,7 @@ const gridApi = shallowRef<GridApi | null>(null);
 const previewArticleRef = ref<typeof PreviewArticle | null>(null);
 
 function refreshGrid() {
-  gridApi.value?.setGridOption('rowData', globalRowData.value);
+  gridApi.value?.setGridOption('rowData', displayedRowData.value);
 }
 
 function onGridReady(event: GridReadyEvent) {
@@ -251,7 +279,7 @@ function onFilterChanged(event: FilterChangedEvent) {
 }
 
 watch(
-  globalRowData,
+  displayedRowData,
   () => {
     refreshGrid();
   },
@@ -815,6 +843,13 @@ async function removeRows() {
           <UInput v-model="inputUrl" placeholder="请输入公众号文章链接" class="flex-1" @keyup.enter="addArticle" />
           <UButton color="blue" @click="addArticle">添加</UButton>
           <UButton color="green" variant="soft" @click="showBatchImportModal = true">批量导入</UButton>
+          <USelectMenu
+            v-model="downloadFilter"
+            :options="DOWNLOAD_FILTER_OPTIONS"
+            value-attribute="value"
+            option-attribute="label"
+            class="w-40"
+          />
         </div>
         <div class="flex items-center gap-3">
           <ButtonGroup
@@ -879,7 +914,7 @@ async function removeRows() {
 
       <ag-grid-vue
         style="width: 100%; height: 100%"
-        :rowData="globalRowData"
+        :rowData="displayedRowData"
         :columnDefs="columnDefs"
         :gridOptions="gridOptions"
         @grid-ready="onGridReady"
