@@ -661,6 +661,20 @@ export async function packHTMLAssets(fakeid: string, html: string, title: string
 
   // 下载所有的图片
   const imgDownloadFn = async (img: HTMLImageElement, proxy: string) => {
+    // 过滤掉头像、封面图等非正文内容图片，它们使用微信原 CDN 链接
+    if (
+      img.classList.contains('wx_follow_avatar_pic') ||
+      img.getAttribute('alt') === 'cover_image' ||
+      img.closest('#js_top_profile') ||
+      img.closest('#js_profile_ad')
+    ) {
+      const dataSrc = img.getAttribute('data-src');
+      if (dataSrc) {
+        img.src = dataSrc;
+      }
+      return 0;
+    }
+
     const url = img.getAttribute('data-src') || img.getAttribute('src');
     if (!url || url.startsWith('data:')) {
       return 0;

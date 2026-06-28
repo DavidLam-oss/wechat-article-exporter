@@ -175,6 +175,15 @@ export class Exporter extends BaseDownloader {
 
         const imgs = document.querySelectorAll<HTMLImageElement>('img');
         for (const img of imgs) {
+          // 过滤掉头像、封面图等非正文内容图片
+          if (
+            img.classList.contains('wx_follow_avatar_pic') ||
+            img.getAttribute('alt') === 'cover_image' ||
+            img.closest('#js_top_profile') ||
+            img.closest('#js_profile_ad')
+          ) {
+            continue;
+          }
           const imgUrl = img.getAttribute('data-src') || img.getAttribute('src');
           if (imgUrl && !imgUrl.startsWith('data:')) {
             const urlWithoutAmp = imgUrl.replace(/&amp;/g, '&');
@@ -1020,6 +1029,20 @@ export class Exporter extends BaseDownloader {
     // 替换图片路径和其包裹的 A 标签链接为本地路径
     const imgs = document.querySelectorAll<HTMLImageElement>('img');
     for (const img of imgs) {
+      // 过滤掉头像、封面图等，这些图不下载本地，直接使用原始 CDN 地址
+      if (
+        img.classList.contains('wx_follow_avatar_pic') ||
+        img.getAttribute('alt') === 'cover_image' ||
+        img.closest('#js_top_profile') ||
+        img.closest('#js_profile_ad')
+      ) {
+        const dataSrc = img.getAttribute('data-src');
+        if (dataSrc) {
+          img.src = dataSrc;
+        }
+        continue;
+      }
+
       const imgUrl = img.getAttribute('data-src') || img.getAttribute('src');
       if (imgUrl) {
         const urlWithoutAmp = imgUrl.replace(/&amp;/g, '&');
@@ -1037,7 +1060,7 @@ export class Exporter extends BaseDownloader {
           img.src = localPath;
           img.removeAttribute('data-src'); // 替换成功后移除 data-src 避免干扰
 
-          // 同时替换外层包裹的 A 标签（在新轮播组件中用于查看原图，以及缩略图）
+          // 同时替换外层包裹 of A 标签（在新轮播组件中用于查看原图，以及缩略图）
           const parentA = img.closest('a');
           if (parentA) {
             parentA.href = localPath;
