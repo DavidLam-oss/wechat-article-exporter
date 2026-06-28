@@ -142,7 +142,9 @@ export class Exporter extends BaseDownloader {
           const pictureList = cgiData?.picture_page_info_list;
           if (Array.isArray(pictureList)) {
             for (const picture of pictureList) {
-              const cdnUrl = picture?.cdn_url;
+              // cgiData 中的 cdn_url 是 HTML-entity 编码的（含 &amp;），
+              // 必须解码，否则 urlmap 的 key 与渲染后 img.src（被浏览器再次解码）永远对不上。
+              const cdnUrl = String(picture?.cdn_url || '').replace(/&amp;/g, '&');
               if (cdnUrl) {
                 resources.push(cdnUrl);
                 this.resources.add({ url: cdnUrl, fakeid: article.fakeid });
