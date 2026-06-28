@@ -462,17 +462,27 @@ export class Exporter extends BaseDownloader {
         }
 
         const urlmap = new Map<string, string>();
+        const downloadedUrls = new Map<string, string>();
+
         for (const resourceUrl of resourceMap.resources) {
           const resource = await getResourceCache(resourceUrl);
           if (!resource) {
             continue;
           }
 
+          const urlWithoutAmp = resourceUrl.replace(/&amp;/g, '&');
+          if (downloadedUrls.has(urlWithoutAmp)) {
+            urlmap.set(resourceUrl, `./assets/${downloadedUrls.get(urlWithoutAmp)}`);
+            continue;
+          }
+
           const uuid = new Date().getTime() + Math.random().toString();
           const ext = mime.getExtension(resource.file.type);
           if (ext) {
-            await this.writeFile(dirname + `/assets/${uuid}.${ext}`, resource.file);
-            urlmap.set(resourceUrl, `./assets/${uuid}.${ext}`);
+            const filename = `${uuid}.${ext}`;
+            await this.writeFile(dirname + `/assets/${filename}`, resource.file);
+            urlmap.set(resourceUrl, `./assets/${filename}`);
+            downloadedUrls.set(urlWithoutAmp, filename);
           }
         }
 
@@ -530,6 +540,8 @@ export class Exporter extends BaseDownloader {
       if (downloadImages) {
         const resourceMap = await getResourceMapCache(url);
         const urlmap = new Map<string, string>();
+        const downloadedUrls = new Map<string, string>();
+
         if (resourceMap) {
           for (const resourceUrl of resourceMap.resources) {
             const resource = await getResourceCache(resourceUrl);
@@ -537,11 +549,19 @@ export class Exporter extends BaseDownloader {
               continue;
             }
 
+            const urlWithoutAmp = resourceUrl.replace(/&amp;/g, '&');
+            if (downloadedUrls.has(urlWithoutAmp)) {
+              urlmap.set(resourceUrl, `./assets/${downloadedUrls.get(urlWithoutAmp)}`);
+              continue;
+            }
+
             const uuid = new Date().getTime() + Math.random().toString();
             const ext = mime.getExtension(resource.file.type);
             if (ext) {
-              await this.writeFile(`assets/${uuid}.${ext}`, resource.file);
-              urlmap.set(resourceUrl, `./assets/${uuid}.${ext}`);
+              const filename = `${uuid}.${ext}`;
+              await this.writeFile(`assets/${filename}`, resource.file);
+              urlmap.set(resourceUrl, `./assets/${filename}`);
+              downloadedUrls.set(urlWithoutAmp, filename);
             }
           }
         }
