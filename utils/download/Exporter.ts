@@ -119,14 +119,19 @@ export class Exporter extends BaseDownloader {
 
       // 该 html 内部的资源，包括图片、背景图片、样式
       const resources: string[] = [];
+      const downloadImages =
+        this.exportType !== 'html' ||
+        (preferences.value as Preferences).exportConfig.exportHtmlDownloadImages !== false;
 
       // 提取图片地址
-      const imgs = document.querySelectorAll<HTMLImageElement>('img');
-      for (const img of imgs) {
-        const imgUrl = img.getAttribute('src') || img.getAttribute('data-src');
-        if (imgUrl) {
-          resources.push(imgUrl);
-          this.resources.add({ url: imgUrl, fakeid: article.fakeid });
+      if (downloadImages) {
+        const imgs = document.querySelectorAll<HTMLImageElement>('img');
+        for (const img of imgs) {
+          const imgUrl = img.getAttribute('src') || img.getAttribute('data-src');
+          if (imgUrl) {
+            resources.push(imgUrl);
+            this.resources.add({ url: imgUrl, fakeid: article.fakeid });
+          }
         }
       }
 
@@ -141,14 +146,16 @@ export class Exporter extends BaseDownloader {
       }
 
       // 提取背景图片地址
-      html.replaceAll(
-        /((?:background|background-image): url\((?:&quot;)?)((?:https?|\/\/)[^)]+?)((?:&quot;)?\))/gs,
-        (_, p1, url, p3) => {
-          resources.push(url);
-          this.resources.add({ url: url, fakeid: article.fakeid });
-          return `${p1}${url}${p3}`;
-        }
-      );
+      if (downloadImages) {
+        html.replaceAll(
+          /((?:background|background-image): url\((?:&quot;)?)((?:https?|\/\/)[^)]+?)((?:&quot;)?\))/gs,
+          (_, p1, url, p3) => {
+            resources.push(url);
+            this.resources.add({ url: url, fakeid: article.fakeid });
+            return `${p1}${url}${p3}`;
+          }
+        );
+      }
 
       await updateResourceMapCache({
         fakeid: article.fakeid,
@@ -867,6 +874,12 @@ export class Exporter extends BaseDownloader {
       const imgUrl = img.getAttribute('src') || img.getAttribute('data-src');
       if (imgUrl && urlmap.has(imgUrl)) {
         img.src = urlmap.get(imgUrl)!;
+      } else {
+        // 如果不下载图片（或者下载失败），需要将 src 指向微信原始的 data-src CDN 链接，否则在 no-referrer 下展示的是空白占位图
+        const dataSrc = img.getAttribute('data-src');
+        if (dataSrc) {
+          img.src = dataSrc;
+        }
       }
     }
 
@@ -889,6 +902,7 @@ export class Exporter extends BaseDownloader {
 <html lang="zh_CN">
 <head>
     <meta charset="utf-8">
+    <meta name="referrer" content="no-referrer">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=0,viewport-fit=cover">

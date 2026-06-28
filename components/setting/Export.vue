@@ -84,12 +84,30 @@
           label="导出 JSON 中包含留言数据"
         />
       </div>
-      <div>
-        <UCheckbox
-          v-model="preferences.exportConfig.exportHtmlIncludeComments"
-          name="exportHtmlIncludeComments"
-          label="导出 HTML 中包含留言数据"
-        />
+      <div class="flex flex-col space-y-3">
+        <div class="flex gap-1">
+          <UCheckbox
+            v-model="preferences.exportConfig.exportHtmlIncludeComments"
+            name="exportHtmlIncludeComments"
+            label="导出 HTML 中包含留言数据"
+          />
+        </div>
+        <div class="flex gap-1">
+          <UCheckbox
+            v-model="preferences.exportConfig.exportHtmlDownloadImages"
+            name="exportHtmlDownloadImages"
+            label="导出 HTML 时下载图片到本地"
+          />
+          <UPopover mode="hover" :popper="{ placement: 'top' }">
+            <template #panel>
+              <p class="max-w-[300px] p-3 text-sm text-gray-500">
+                如果开启（默认），则会将微信文章内的所有图片下载并保存到本地 assets 目录下。<br />
+                如果关闭，HTML 中将直接引用微信 CDN 图片链接。这能极大地加快导出速度，节省空间，并降低因频繁请求微信 CDN 被封禁的风险。
+              </p>
+            </template>
+            <UIcon color="gray" name="i-heroicons:question-mark-circle-16-solid" class="size-5" />
+          </UPopover>
+        </div>
       </div>
     </div>
   </UCard>

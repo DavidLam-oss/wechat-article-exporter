@@ -13,6 +13,7 @@ const defaultOptions: Partial<Preferences> = {
     exportJsonIncludeComments: true,
     exportJsonIncludeContent: true,
     exportHtmlIncludeComments: true,
+    exportHtmlDownloadImages: true,
   },
   downloadConfig: {
     forceDownloadContent: false,

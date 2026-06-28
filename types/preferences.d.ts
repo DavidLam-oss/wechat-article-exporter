@@ -40,6 +40,9 @@ interface ExportConfig {
 
   // 导出html中是否包含评论
   exportHtmlIncludeComments: boolean;
+
+  // 导出html中是否下载图片到本地
+  exportHtmlDownloadImages: boolean;
 }
 
 interface DownloadConfig {
