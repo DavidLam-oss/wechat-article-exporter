@@ -540,8 +540,8 @@ export class Exporter extends BaseDownloader {
         return;
       }
 
-      const filename = await this.exportDirName(url);
-      console.log(`开始导出: ${filename}(${url})`);
+      const dirname = await this.exportDirName(url);
+      console.log(`开始导出: ${dirname}(${url})`);
 
       const html = await cached.file.text();
       let content = '';
@@ -558,6 +558,12 @@ export class Exporter extends BaseDownloader {
               continue;
             }
 
+            const ext = mime.getExtension(resource.file.type);
+            // 过滤掉 CSS 样式文件，只下载图片资源
+            if (!ext || ext === 'css') {
+              continue;
+            }
+
             const urlWithoutAmp = resourceUrl.replace(/&amp;/g, '&');
             if (downloadedUrls.has(urlWithoutAmp)) {
               urlmap.set(resourceUrl, `./assets/${downloadedUrls.get(urlWithoutAmp)}`);
@@ -565,13 +571,10 @@ export class Exporter extends BaseDownloader {
             }
 
             const uuid = new Date().getTime() + Math.random().toString();
-            const ext = mime.getExtension(resource.file.type);
-            if (ext) {
-              const filename = `${uuid}.${ext}`;
-              await this.writeFile(`assets/${filename}`, resource.file);
-              urlmap.set(resourceUrl, `./assets/${filename}`);
-              downloadedUrls.set(urlWithoutAmp, filename);
-            }
+            const filename = `${uuid}.${ext}`;
+            await this.writeFile(dirname + `/assets/${filename}`, resource.file);
+            urlmap.set(resourceUrl, `./assets/${filename}`);
+            downloadedUrls.set(urlWithoutAmp, filename);
           }
         }
         content = await this.normalizeHtml(cached, html, urlmap);
@@ -582,8 +585,10 @@ export class Exporter extends BaseDownloader {
       if (!content) return;
       const markdown = turndownService.turndown(content);
 
+      const article = await getArticleByLink(url);
+      const mdFilename = filterInvalidFilenameChars(article.title);
       const blob = new Blob([markdown], { type: 'text/markdown' });
-      await this.writeFile(filename + '.md', blob);
+      await this.writeFile(dirname + `/${mdFilename}.md`, blob);
     });
     await sleep(100);
   }
