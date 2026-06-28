@@ -177,9 +177,10 @@ export class Exporter extends BaseDownloader {
         for (const img of imgs) {
           const imgUrl = img.getAttribute('data-src') || img.getAttribute('src');
           if (imgUrl && !imgUrl.startsWith('data:')) {
-            if (!resources.has(imgUrl)) {
-              resources.add(imgUrl);
-              this.resources.add({ url: imgUrl, fakeid: article.fakeid });
+            const urlWithoutAmp = imgUrl.replace(/&amp;/g, '&');
+            if (!resources.has(urlWithoutAmp)) {
+              resources.add(urlWithoutAmp);
+              this.resources.add({ url: urlWithoutAmp, fakeid: article.fakeid });
             }
           }
         }
@@ -189,9 +190,12 @@ export class Exporter extends BaseDownloader {
       const links = document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]');
       for (const link of links) {
         const url = link.href;
-        if (url && !resources.has(url)) {
-          resources.add(url);
-          this.resources.add({ url: url, fakeid: article.fakeid });
+        if (url) {
+          const urlWithoutAmp = url.replace(/&amp;/g, '&');
+          if (!resources.has(urlWithoutAmp)) {
+            resources.add(urlWithoutAmp);
+            this.resources.add({ url: urlWithoutAmp, fakeid: article.fakeid });
+          }
         }
       }
 
@@ -200,9 +204,10 @@ export class Exporter extends BaseDownloader {
         html.replaceAll(
           /((?:background|background-image): url\((?:&quot;)?)((?:https?|\/\/)[^)]+?)((?:&quot;)?\))/gs,
           (_, p1, url, p3) => {
-            if (!resources.has(url)) {
-              resources.add(url);
-              this.resources.add({ url: url, fakeid: article.fakeid });
+            const urlWithoutAmp = url.replace(/&amp;/g, '&');
+            if (!resources.has(urlWithoutAmp)) {
+              resources.add(urlWithoutAmp);
+              this.resources.add({ url: urlWithoutAmp, fakeid: article.fakeid });
             }
             return `${p1}${url}${p3}`;
           }

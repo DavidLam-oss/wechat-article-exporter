@@ -737,31 +737,72 @@ export async function packHTMLAssets(fakeid: string, html: string, title: string
     await pool.downloads<HTMLImageElement>([...imgs], imgDownloadFn);
   }
 
-  // 下载背景图片 背景图片无法用选择器选中并修改，因此用正则进行匹配替换
   let pageContentHTML = $jsArticleContent.outerHTML;
   const jsArticleBottomBarHTML = $jsArticleBottomBar?.outerHTML;
 
-  // 收集所有的背景图片地址
+  // 收集所有的背景图片地址并进行去重规范化
   const bgImageURLs = new Set<string>();
   pageContentHTML.replaceAll(
     /((?:background|background-image): url\((?:&quot;)?)((?:https?|\/\/)[^)]+?)((?:&quot;)?\))/gs,
     (_, p1, url, p3) => {
-      bgImageURLs.add(url);
+      const urlWithoutAmp = url.replace(/&amp;/g, '&');
+      bgImageURLs.add(urlWithoutAmp);
       return `${p1}${url}${p3}`;
     }
   );
+
   if (bgImageURLs.size > 0) {
+    const url2pathMap = new Map<string, string>();
+    
     // 下载背景图片
     const bgImgDownloadFn = async (url: string, proxy: string) => {
-      const imgData = await downloadAssetWithProxy<Blob>(url, proxy, false, 10);
-      const uuid = new Date().getTime() + Math.random().toString();
-      const ext = mime.getExtension(imgData.type);
+      // url 是已规范化（&amp; 被替换为 &）的图片链接
+      if (downloadedUrls.has(url)) {
+        const cachedFilename = downloadedUrls.get(url)!;
+        url2pathMap.set(url, `assets/${cachedFilename}`);
+        url2pathMap.set(url.replace(/&/g, '&amp;'), `assets/${cachedFilename}`);
+        return 0;
+      }
 
-      zip.file(`assets/${uuid}.${ext}`, imgData);
-      url2pathMap.set(url, `assets/${uuid}.${ext}`);
+      let imgData: Blob | null = null;
+      try {
+        imgData = await downloadAssetWithProxy<Blob>(url, proxy, false, 10);
+      } catch (err) {
+        const enableServerFallback = preferences.value?.exportConfig?.enableServerImageFallback !== false;
+        if (enableServerFallback) {
+          console.log(`[ZIP Exporter] 背景图代理下载失败，尝试本地服务端中继下载: ${url}`);
+          try {
+            const response = await fetch('/api/web/image-download', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ url }),
+            });
+            if (response.ok) {
+              imgData = await response.blob();
+              console.log(`[ZIP Exporter] 背景图本地服务端中继下载成功: ${url}`);
+            }
+          } catch (serverErr) {
+            console.error(`[ZIP Exporter] 背景图本地服务端中继下载抛出异常:`, serverErr);
+          }
+        }
+      }
+
+      if (!imgData) {
+        console.warn(`[ZIP Exporter] 背景图片下载失败: ${url}`);
+        return 0;
+      }
+
+      const uuid = new Date().getTime() + Math.random().toString();
+      const ext = mime.getExtension(imgData.type) || 'png';
+      const filename = `${uuid}.${ext}`;
+
+      zip.file(`assets/${filename}`, imgData);
+      downloadedUrls.set(url, filename);
+
+      url2pathMap.set(url, `assets/${filename}`);
+      url2pathMap.set(url.replace(/&/g, '&amp;'), `assets/${filename}`);
       return imgData.size;
     };
-    const url2pathMap = new Map<string, string>();
 
     await pool.downloads<string>([...bgImageURLs], bgImgDownloadFn);
 
@@ -769,8 +810,12 @@ export async function packHTMLAssets(fakeid: string, html: string, title: string
     pageContentHTML = pageContentHTML.replaceAll(
       /((?:background|background-image): url\((?:&quot;)?)((?:https?|\/\/)[^)]+?)((?:&quot;)?\))/gs,
       (_, p1, url, p3) => {
+        const urlWithoutAmp = url.replace(/&amp;/g, '&');
         if (url2pathMap.has(url)) {
           const path = url2pathMap.get(url)!;
+          return `${p1}./${path}${p3}`;
+        } else if (url2pathMap.has(urlWithoutAmp)) {
+          const path = url2pathMap.get(urlWithoutAmp)!;
           return `${p1}./${path}${p3}`;
         } else {
           console.warn('背景图片丢失: ', url);
