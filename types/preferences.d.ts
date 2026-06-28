@@ -43,6 +43,9 @@ interface ExportConfig {
 
   // 导出html中是否下载图片到本地
   exportHtmlDownloadImages: boolean;
+
+  // 服务端图片下载中继（代理失败时 fallback）
+  enableServerImageFallback?: boolean;
 }
 
 interface DownloadConfig {

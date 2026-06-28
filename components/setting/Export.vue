@@ -108,6 +108,21 @@
             <UIcon color="gray" name="i-heroicons:question-mark-circle-16-solid" class="size-5" />
           </UPopover>
         </div>
+        <div class="flex gap-1 pl-6" v-if="preferences.exportConfig.exportHtmlDownloadImages">
+          <UCheckbox
+            v-model="preferences.exportConfig.enableServerImageFallback"
+            name="enableServerImageFallback"
+            label="允许使用本地服务器代理下载图片"
+          />
+          <UPopover mode="hover" :popper="{ placement: 'top' }">
+            <template #panel>
+              <p class="max-w-[300px] p-3 text-sm text-gray-500">
+                如果开启（默认），则当通过第三方跨域代理下载图片超时或失败时，会自动调用运行在本地的后台服务中转拉取该图片，可 100% 保证离线图片下载成功，防止丢图。
+              </p>
+            </template>
+            <UIcon color="gray" name="i-heroicons:question-mark-circle-16-solid" class="size-5" />
+          </UPopover>
+        </div>
       </div>
     </div>
   </UCard>

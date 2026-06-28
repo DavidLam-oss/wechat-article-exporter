@@ -14,6 +14,7 @@ const defaultOptions: Partial<Preferences> = {
     exportJsonIncludeContent: true,
     exportHtmlIncludeComments: true,
     exportHtmlDownloadImages: true,
+    enableServerImageFallback: true,
   },
   downloadConfig: {
     forceDownloadContent: false,

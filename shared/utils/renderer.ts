@@ -275,14 +275,28 @@ ${desc ? `<div class="pay_subscribe_desc">${desc}</div>` : ''}
 
 /**
  * 渲染图片分享类文章的图片轮播容器（横向 scroll-snap）
- * 纯 CSS 实现，手机/电脑均可滑动，无需 JS。
+ * 左右箭头通过内联 <script> 绑定 scrollBy，纯 CSS scroll-snap 自动吸附。
  * 依赖调用方在 HTML 中包含 .picture-carousel 相关 CSS（见 carouselCSS 常量）。
  * 点击图片通过 <a target="_blank"> 打开原图，避免 inline onclick 被 DOMPurify 过滤。
  * @param pictures 图片分享列表（来自 cgiDataNew.picture_page_info_list）
  * @returns HTML 字符串
  */
-export function renderPictureCarouselHTML(pictures: Array<{ cdn_url: string }>): string {
-  let html = '<div class="picture-carousel">';
+export function renderPictureCarouselHTML(pictures: Array<{ cdn_url: string; width?: number; height?: number }>): string {
+  const firstPic = pictures[0];
+  let ratio = 0.75; // 默认 3:4
+  if (firstPic && firstPic.width && firstPic.height) {
+    const w = Number(firstPic.width);
+    const h = Number(firstPic.height);
+    if (!isNaN(w) && !isNaN(h) && h > 0) {
+      ratio = w / h;
+    }
+  }
+  // 限制比例在 0.75 到 1.3333 之间以匹配微信官方习惯
+  ratio = Math.min(Math.max(ratio, 0.75), 1.3333);
+
+  let html = `<div class="picture-carousel-wrapper" style="--first-img-ratio: ${ratio.toFixed(4)};">`;
+  html += '<button type="button" class="picture-arrow picture-arrow-prev" aria-label="上一张">‹</button>';
+  html += '<div class="picture-carousel">';
   pictures.forEach((picture, idx) => {
     const url = String(picture?.cdn_url || '').replace(/&amp;/g, '&');
     const label = `图${idx + 1}`;
@@ -292,6 +306,10 @@ export function renderPictureCarouselHTML(pictures: Array<{ cdn_url: string }>):
 </div>`;
   });
   html += '</div>';
+  html += '<button type="button" class="picture-arrow picture-arrow-next" aria-label="下一张">›</button>';
+  html += '</div>';
+  // 内联脚本：箭头点击触发 scrollBy。scroll-snap-type: x mandatory 自动吸附下一张。
+  html += '<script>(function(){document.querySelectorAll(".picture-carousel-wrapper").forEach(function(w){var c=w.querySelector(".picture-carousel");var p=w.querySelector(".picture-arrow-prev");var n=w.querySelector(".picture-arrow-next");if(!c||!p||!n)return;function step(d){c.scrollBy({left:d*c.clientWidth,behavior:"smooth"});}p.addEventListener("click",function(){step(-1);});n.addEventListener("click",function(){step(1);});});})();</script>';
   return html;
 }
 
@@ -300,37 +318,94 @@ export function renderPictureCarouselHTML(pictures: Array<{ cdn_url: string }>):
  * 集中维护，避免在 renderer.ts / Exporter.ts / utils/index.ts 三处重复硬编码。
  */
 export const carouselCSS = `
+.picture-carousel-wrapper {
+    position: relative;
+    max-width: 650px;
+    margin: 20px auto;
+    aspect-ratio: var(--first-img-ratio, 0.75);
+    background: #000;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+}
 .picture-carousel {
     display: flex;
     flex-direction: row;
+    width: 100%;
+    height: 100%;
     overflow-x: auto;
     scroll-snap-type: x mandatory;
-    gap: 12px;
-    padding: 20px;
-    scroll-padding: 0 20px;
     -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
+    scrollbar-width: none;
+    margin: 0;
+    padding: 0;
+}
+.picture-carousel::-webkit-scrollbar {
+    display: none;
 }
 .picture-item {
-    flex: 0 0 calc(100% - 60px);
+    flex: 0 0 100%;
+    width: 100%;
+    height: 100%;
     scroll-snap-align: center;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 8px;
+    justify-content: center;
+    position: relative;
+    box-sizing: border-box;
 }
 .picture-item-img {
-    display: block;
     max-width: 100%;
-    max-height: 70vh;
-    border: 1px solid #ccc;
-    border-radius: 5px;
+    max-height: 100%;
+    object-fit: contain;
+    display: block;
     cursor: pointer;
 }
 .picture-item-label {
-    font-size: 13px;
-    color: #666;
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.65);
+    color: #fff;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    pointer-events: none;
+    margin: 0;
+    line-height: 1.5;
 }
+.picture-arrow {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 10;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.25);
+    border: none;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    font-size: 24px;
+    color: #fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    user-select: none;
+    transition: all 0.2s ease;
+}
+.picture-arrow:hover {
+    background: rgba(255, 255, 255, 0.45);
+}
+.picture-arrow:active {
+    transform: translateY(-50%) scale(0.9);
+}
+.picture-arrow-prev { left: 16px; }
+.picture-arrow-next { right: 16px; }
 `;
 
 /**

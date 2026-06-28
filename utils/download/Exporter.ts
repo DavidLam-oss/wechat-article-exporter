@@ -127,7 +127,9 @@ export class Exporter extends BaseDownloader {
       const document = parser.parseFromString(html, 'text/html');
 
       // 该 html 内部的资源，包括图片、背景图片、样式
-      const resources: string[] = [];
+      // 用 Set 去重：picture_page_info_list 的 cdn_url 可能与 <img> src 重叠
+      // （少数图片分享文章在 <img> 里也有图），add() 会自动忽略重复 key。
+      const resources = new Set<string>();
       const downloadImages =
         !['html', 'markdown'].includes(this.exportType) ||
         (preferences.value as Preferences).exportConfig.exportHtmlDownloadImages !== false;
@@ -141,24 +143,33 @@ export class Exporter extends BaseDownloader {
           const cgiData = await parseCgiDataNew(html);
           const pictureList = cgiData?.picture_page_info_list;
           if (Array.isArray(pictureList)) {
+            console.log(`[Exporter] 图片分享 ${article.title} 解析到 ${pictureList.length} 张图`);
             for (const picture of pictureList) {
               // cgiData 中的 cdn_url 是 HTML-entity 编码的（含 &amp;），
               // 必须解码，否则 urlmap 的 key 与渲染后 img.src（被浏览器再次解码）永远对不上。
               const cdnUrl = String(picture?.cdn_url || '').replace(/&amp;/g, '&');
-              if (cdnUrl) {
-                resources.push(cdnUrl);
+              if (cdnUrl && !resources.has(cdnUrl)) {
+                resources.add(cdnUrl);
                 this.resources.add({ url: cdnUrl, fakeid: article.fakeid });
               }
             }
+          } else {
+            console.warn(
+              `[Exporter] 图片分享 ${article.title} 解析 cgiData 失败：` +
+                `item_show_type=${article.item_show_type}, html 含 picture_page_info_list=${html.includes('picture_page_info_list')}, ` +
+                `cgiData=${cgiData ? '已解析' : 'null'}, pictureList=${Array.isArray(pictureList) ? pictureList.length : '非数组'}`
+            );
           }
         }
 
         const imgs = document.querySelectorAll<HTMLImageElement>('img');
         for (const img of imgs) {
-          const imgUrl = img.getAttribute('src') || img.getAttribute('data-src');
-          if (imgUrl) {
-            resources.push(imgUrl);
-            this.resources.add({ url: imgUrl, fakeid: article.fakeid });
+          const imgUrl = img.getAttribute('data-src') || img.getAttribute('src');
+          if (imgUrl && !imgUrl.startsWith('data:')) {
+            if (!resources.has(imgUrl)) {
+              resources.add(imgUrl);
+              this.resources.add({ url: imgUrl, fakeid: article.fakeid });
+            }
           }
         }
       }
@@ -167,8 +178,8 @@ export class Exporter extends BaseDownloader {
       const links = document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]');
       for (const link of links) {
         const url = link.href;
-        if (url) {
-          resources.push(url);
+        if (url && !resources.has(url)) {
+          resources.add(url);
           this.resources.add({ url: url, fakeid: article.fakeid });
         }
       }
@@ -178,8 +189,10 @@ export class Exporter extends BaseDownloader {
         html.replaceAll(
           /((?:background|background-image): url\((?:&quot;)?)((?:https?|\/\/)[^)]+?)((?:&quot;)?\))/gs,
           (_, p1, url, p3) => {
-            resources.push(url);
-            this.resources.add({ url: url, fakeid: article.fakeid });
+            if (!resources.has(url)) {
+              resources.add(url);
+              this.resources.add({ url: url, fakeid: article.fakeid });
+            }
             return `${p1}${url}${p3}`;
           }
         );
@@ -188,7 +201,7 @@ export class Exporter extends BaseDownloader {
       await updateResourceMapCache({
         fakeid: article.fakeid,
         url: url,
-        resources: resources,
+        resources: [...resources],
       });
     }
   }
@@ -294,6 +307,43 @@ export class Exporter extends BaseDownloader {
         await this.handleDownloadFailure(proxy, url, attempt, error);
       }
     }
+    
+    // 所有重试都失败时，尝试本地服务端中转下载
+    const isImage = /\.(png|jpe?g|gif|webp|bmp|svg)/i.test(url) || 
+                    url.includes('qpic.cn') || 
+                    url.includes('q.cn') || 
+                    url.includes('wx_fmt=');
+    const enableServerFallback = (preferences.value as Preferences).exportConfig.enableServerImageFallback !== false;
+
+    if (isImage && enableServerFallback) {
+      console.log(`[Exporter] 代理下载失败，尝试本地服务端中继下载: ${url}`);
+      try {
+        const response = await fetch('/api/web/image-download', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url }),
+        });
+        if (response.ok) {
+          const blob = await response.blob();
+          await updateResourceCache({
+            fakeid: fakeid,
+            url: url,
+            file: blob,
+          });
+          this.pending.delete(url);
+          this.completed.add(url);
+          console.log(`[Exporter] 本地服务端中继下载成功: ${url}`);
+          return;
+        } else {
+          console.warn(`[Exporter] 本地服务端中继下载返回状态异常: ${response.status} ${response.statusText}`);
+        }
+      } catch (err) {
+        console.error(`[Exporter] 本地服务端中继下载抛出异常:`, err);
+      }
+    }
+
+    // 所有重试和中转都失败时打印警告，保留 CDN 链接
+    console.warn(`[Exporter] 下载资源失败 (已重试 ${this.options.maxRetries} 次 + 服务端中继): ${url}`);
 
     this.pending.delete(url);
     this.failed.add(url);
@@ -934,7 +984,7 @@ export class Exporter extends BaseDownloader {
     // 替换图片路径为本地路径
     const imgs = document.querySelectorAll<HTMLImageElement>('img');
     for (const img of imgs) {
-      const imgUrl = img.getAttribute('src') || img.getAttribute('data-src');
+      const imgUrl = img.getAttribute('data-src') || img.getAttribute('src');
       if (imgUrl && urlmap.has(imgUrl)) {
         img.src = urlmap.get(imgUrl)!;
       } else {

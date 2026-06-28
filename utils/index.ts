@@ -10,6 +10,8 @@ import type { DownloadableArticle } from '~/types/types';
 import type { AudioResource, VideoPageInfo } from '~/types/video';
 import * as pool from '~/utils/pool';
 import { extractCommentId } from './comment';
+import usePreferences from '~/composables/usePreferences';
+import type { Preferences } from '~/types/preferences';
 
 /**
  * 使用代理下载资源
@@ -654,20 +656,65 @@ export async function packHTMLAssets(fakeid: string, html: string, title: string
     }
   }
 
+  const preferences = usePreferences() as any;
+  const downloadedUrls = new Map<string, string>();
+
   // 下载所有的图片
   const imgDownloadFn = async (img: HTMLImageElement, proxy: string) => {
-    const url = img.getAttribute('src') || img.getAttribute('data-src');
-    if (!url) {
+    const url = img.getAttribute('data-src') || img.getAttribute('src');
+    if (!url || url.startsWith('data:')) {
       return 0;
     }
 
-    const imgData = await downloadAssetWithProxy<Blob>(url, proxy, false, 10);
+    // 检查缓存，防止重复写入相同的文件
+    if (downloadedUrls.has(url)) {
+      const cachedFilename = downloadedUrls.get(url)!;
+      img.src = `./assets/${cachedFilename}`;
+      img.removeAttribute('data-src');
+      return 0;
+    }
+
+    let imgData: Blob | null = null;
+    try {
+      imgData = await downloadAssetWithProxy<Blob>(url, proxy, false, 10);
+    } catch (err) {
+      const enableServerFallback = preferences.value?.exportConfig?.enableServerImageFallback !== false;
+      if (enableServerFallback) {
+        console.log(`[ZIP Exporter] 代理下载失败，尝试本地服务端中继下载: ${url}`);
+        try {
+          const response = await fetch('/api/web/image-download', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url }),
+          });
+          if (response.ok) {
+            imgData = await response.blob();
+            console.log(`[ZIP Exporter] 本地服务端中继下载成功: ${url}`);
+          }
+        } catch (serverErr) {
+          console.error(`[ZIP Exporter] 本地服务端中继下载抛出异常:`, serverErr);
+        }
+      }
+    }
+
+    if (!imgData) {
+      console.warn(`[ZIP Exporter] 图片下载失败，降级使用原始 CDN 链接: ${url}`);
+      const dataSrc = img.getAttribute('data-src');
+      if (dataSrc) {
+        img.src = dataSrc;
+      }
+      return 0;
+    }
+
     const uuid = new Date().getTime() + Math.random().toString();
-    const ext = mime.getExtension(imgData.type);
-    zip.file(`assets/${uuid}.${ext}`, imgData);
+    const ext = mime.getExtension(imgData.type) || 'png';
+    const filename = `${uuid}.${ext}`;
+    zip.file(`assets/${filename}`, imgData);
+    downloadedUrls.set(url, filename);
 
     // 改写html中的引用路径，指向本地图片文件
-    img.src = `./assets/${uuid}.${ext}`;
+    img.src = `./assets/${filename}`;
+    img.removeAttribute('data-src');
 
     return imgData.size;
   };
