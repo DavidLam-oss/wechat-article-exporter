@@ -107,12 +107,7 @@ export async function renderHTMLFromCgiDataNew(cgiData: any, comments = true) {
             line-height: 28px;
             hyphens: auto;
         }
-        .picture_content .picture_item {
-            margin-bottom: 30px;
-        }
-        .picture_content .picture_item .picture_item_label {
-            text-align: center;
-        }
+        ${carouselCSS}
         img {
             max-width: 100%;
         }
@@ -279,6 +274,66 @@ ${desc ? `<div class="pay_subscribe_desc">${desc}</div>` : ''}
 }
 
 /**
+ * 渲染图片分享类文章的图片轮播容器（横向 scroll-snap）
+ * 纯 CSS 实现，手机/电脑均可滑动，无需 JS。
+ * 依赖调用方在 HTML 中包含 .picture-carousel 相关 CSS（见 carouselCSS 常量）。
+ * 点击图片通过 <a target="_blank"> 打开原图，避免 inline onclick 被 DOMPurify 过滤。
+ * @param pictures 图片分享列表（来自 cgiDataNew.picture_page_info_list）
+ * @returns HTML 字符串
+ */
+export function renderPictureCarouselHTML(pictures: Array<{ cdn_url: string }>): string {
+  let html = '<div class="picture-carousel">';
+  pictures.forEach((picture, idx) => {
+    const url = String(picture?.cdn_url || '').replace(/&amp;/g, '&');
+    const label = `图${idx + 1}`;
+    html += `<div class="picture-item" id="${label}">
+  <a href="${url}" target="_blank" rel="noopener noreferrer"><img class="picture-item-img" src="${url}" alt="${label}" /></a>
+  <p class="picture-item-label">${label}</p>
+</div>`;
+  });
+  html += '</div>';
+  return html;
+}
+
+/**
+ * 图片轮播容器所需的 CSS（在 <style> 块内通过 ${carouselCSS} 注入）
+ * 集中维护，避免在 renderer.ts / Exporter.ts / utils/index.ts 三处重复硬编码。
+ */
+export const carouselCSS = `
+.picture-carousel {
+    display: flex;
+    flex-direction: row;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    gap: 12px;
+    padding: 20px;
+    scroll-padding: 0 20px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+}
+.picture-item {
+    flex: 0 0 calc(100% - 60px);
+    scroll-snap-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+.picture-item-img {
+    display: block;
+    max-width: 100%;
+    max-height: 70vh;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    cursor: pointer;
+}
+.picture-item-label {
+    font-size: 13px;
+    color: #666;
+}
+`;
+
+/**
  * 渲染【图片分享(8)】类文章的内容部分
  * @param cgiData
  */
@@ -293,16 +348,7 @@ function renderContent_8(cgiData: any): string {
   });
 
   // 图片内容
-  const pictureContent = cgiData.picture_page_info_list
-    .map((item: any) => item.cdn_url.replace(/&amp;/g, '&'))
-    .map(
-      (url: string, idx: number) =>
-        `<div class="picture_item" id="图${idx + 1}">
-    <img class="picture_item_img" src="${url}" alt="图${idx + 1}" />
-    <p class="picture_item_label">图${idx + 1}</p>
-</div>`
-    )
-    .join('\n');
+  const pictureContent = renderPictureCarouselHTML(cgiData.picture_page_info_list);
 
   return `<section class="item_show_type_8">
 <p class="text_content">${textContent}</p>

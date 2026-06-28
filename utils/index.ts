@@ -1,6 +1,7 @@
 import JSZip from 'jszip';
 import mime from 'mime';
 import { parseCgiDataNew } from '#shared/utils/html';
+import { carouselCSS, renderPictureCarouselHTML } from '#shared/utils/renderer';
 import { formatTimeStamp, sleep } from '#shared/utils/helpers';
 import { request } from '#shared/utils/request';
 import { getComment } from '~/apis';
@@ -394,83 +395,6 @@ export async function packHTMLAssets(fakeid: string, html: string, title: string
     readNum = parseInt(readNumMatchResult.groups.read_num, 10);
   }
 
-  // 图片分享消息：通过 parseCgiDataNew 拿到 cgiData，从中取 picture_page_info_list 和 desc
-  // （不再用 window.picture_page_info_list / __QMTPL_SSR_DATA__ 的正则+eval 路径——
-  //   旧正则 `window\.picture_page_info_list\s*=.+\.slice\(0,\s*20\);` 对新老样本都不匹配。）
-  function decode_html(data: string, encode: boolean) {
-    const replace = [
-      '&#39;',
-      "'",
-      '&quot;',
-      '"',
-      '&nbsp;',
-      ' ',
-      '&gt;',
-      '>',
-      '&lt;',
-      '<',
-      '&yen;',
-      '¥',
-      '&amp;',
-      '&',
-    ];
-    const replaceReverse = [
-      '&',
-      '&amp;',
-      '¥',
-      '&yen;',
-      '<',
-      '&lt;',
-      '>',
-      '&gt;',
-      ' ',
-      '&nbsp;',
-      '"',
-      '&quot;',
-      "'",
-      '&#39;',
-    ];
-
-    let target = encode ? replaceReverse : replace;
-    let str = data;
-    for (let i = 0; i < target.length; i += 2) {
-      str = str.replace(new RegExp(target[i], 'g'), target[i + 1]);
-    }
-    return str;
-  }
-
-  const cgiData = await parseCgiDataNew(html);
-  const picture_page_info_list: any[] | undefined = cgiData?.picture_page_info_list;
-  if (Array.isArray(picture_page_info_list) && picture_page_info_list.length > 0) {
-    // 是图片分享文章，把图片写入 #js_share_content_page_hd
-    const containerEl = $jsArticleContent.querySelector('#js_share_content_page_hd');
-    if (containerEl) {
-      let innerHTML =
-        '<div style="display: flex;flex-direction: column;align-items: center;gap: 10px;padding-block: 20px;">';
-      for (const picture of picture_page_info_list) {
-        innerHTML += `<img src="${picture.cdn_url}" alt="" style="display: block;border: 1px solid gray;border-radius: 5px;max-width: 90%;" onclick="window.open(this.src, '_blank', 'popup')" />`;
-      }
-      innerHTML += '</div>';
-      containerEl.innerHTML = innerHTML;
-    }
-
-    const desc: string = cgiData.desc || cgiData.content_noencode || '';
-    if (desc) {
-      // #js_image_desc 是 Vue 运行时注入的元素，缓存的原始 HTML 里没有 —— 按需兜底创建
-      let $imageDesc = $jsArticleContent.querySelector('#js_image_desc') as HTMLElement | null;
-      if (!$imageDesc) {
-        $imageDesc = document.createElement('p');
-        $imageDesc.id = 'js_image_desc';
-        $jsArticleContent.querySelector('#js_base_container')?.appendChild($imageDesc);
-      }
-      let processedDesc = desc.replace(/\r/g, '').replace(/\n/g, '<br>').replace(/\s/g, '&nbsp;');
-      processedDesc = decode_html(processedDesc, false);
-      $imageDesc.innerHTML = processedDesc;
-
-      bodyCls += ' pages_skin_pc page_share_img';
-    }
-  }
-
   // 视频分享消息
   const $js_common_share_desc = $jsArticleContent.querySelector('#js_common_share_desc');
   if ($js_common_share_desc) {
@@ -651,6 +575,83 @@ export async function packHTMLAssets(fakeid: string, html: string, title: string
         }
       }
     });
+  }
+
+  // 图片分享消息：通过 parseCgiDataNew 拿到 cgiData，从中取 picture_page_info_list 和 desc
+  // （不在 window.picture_page_info_list / __QMTPL_SSR_DATA__ 的正则+eval 路径——
+  //   旧正则 `window\.picture_page_info_list\s*=.+\.slice\(0,\s*20\);` 对新老样本都不匹配。）
+  // 必须放在图片下载之前，否则 #js_share_content_page_hd 里的 <img> 还没插入到 DOM，
+  // imgDownloadFn 不会处理它们，导致 HTML/MD 导出后图片仍是 CDN 链接。
+  function decode_html(data: string, encode: boolean) {
+    const replace = [
+      '&#39;',
+      "'",
+      '&quot;',
+      '"',
+      '&nbsp;',
+      ' ',
+      '&gt;',
+      '>',
+      '&lt;',
+      '<',
+      '&yen;',
+      '¥',
+      '&amp;',
+      '&',
+    ];
+    const replaceReverse = [
+      '&',
+      '&amp;',
+      '¥',
+      '&yen;',
+      '<',
+      '&lt;',
+      '>',
+      '&gt;',
+      ' ',
+      '&nbsp;',
+      '"',
+      '&quot;',
+      "'",
+      '&#39;',
+    ];
+
+    let target = encode ? replaceReverse : replace;
+    let str = data;
+    for (let i = 0; i < target.length; i += 2) {
+      str = str.replace(new RegExp(target[i], 'g'), target[i + 1]);
+    }
+    return str;
+  }
+
+  // 性能守卫：99% 普通图文 HTML 不含 picture_page_info_list 字符串，在此短路以避免
+  // 对每篇文章都跑一次 parseCgiDataNew（iframe/sandbox eval）。
+  if (html.includes('picture_page_info_list')) {
+    const cgiData = await parseCgiDataNew(html);
+    const picture_page_info_list: any[] | undefined = cgiData?.picture_page_info_list;
+    if (Array.isArray(picture_page_info_list) && picture_page_info_list.length > 0) {
+      // 是图片分享文章，把图片写入 #js_share_content_page_hd
+      const containerEl = $jsArticleContent.querySelector('#js_share_content_page_hd');
+      if (containerEl) {
+        containerEl.innerHTML = renderPictureCarouselHTML(picture_page_info_list);
+      }
+
+      const desc: string = cgiData.desc || cgiData.content_noencode || '';
+      if (desc) {
+        // #js_image_desc 是 Vue 运行时注入的元素，缓存的原始 HTML 里没有 —— 按需兜底创建
+        let $imageDesc = $jsArticleContent.querySelector('#js_image_desc') as HTMLElement | null;
+        if (!$imageDesc) {
+          $imageDesc = document.createElement('p');
+          $imageDesc.id = 'js_image_desc';
+          $jsArticleContent.querySelector('#js_base_container')?.appendChild($imageDesc);
+        }
+        let processedDesc = desc.replace(/\r/g, '').replace(/\n/g, '<br>').replace(/\s/g, '&nbsp;');
+        processedDesc = decode_html(processedDesc, false);
+        $imageDesc.innerHTML = processedDesc;
+
+        bodyCls += ' pages_skin_pc page_share_img';
+      }
+    }
   }
 
   // 下载所有的图片
@@ -877,6 +878,7 @@ export async function packHTMLAssets(fakeid: string, html: string, title: string
             height: 16px;
             margin-right: 3px;
         }
+        ${carouselCSS}
     </style>
 </head>
 <body class="${bodyCls}">

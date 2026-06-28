@@ -3,7 +3,7 @@ import mime from 'mime';
 import TurndownService from 'turndown';
 import { filterInvalidFilenameChars, sleep } from '#shared/utils/helpers';
 import { parseCgiDataNew } from '#shared/utils/html';
-import { renderHTMLFromCgiDataNew, renderTextFromCgiDataNew } from '#shared/utils/renderer';
+import { carouselCSS, renderHTMLFromCgiDataNew, renderPictureCarouselHTML, renderTextFromCgiDataNew } from '#shared/utils/renderer';
 import usePreferences from '~/composables/usePreferences';
 import { getArticleByLink } from '~/store/v2/article';
 import { getHtmlCache, type HtmlAsset } from '~/store/v2/html';
@@ -134,6 +134,23 @@ export class Exporter extends BaseDownloader {
 
       // 提取图片地址
       if (downloadImages) {
+        // 图片分享类（item_show_type=8）的图片不在 HTML 的 <img> 里，只在 window.cgiDataNew.picture_page_info_list，
+        // 必须通过 parseCgiDataNew 从 script 中解析出来，否则下载不到本地（会被 CDN 链接取代）。
+        // 性能守卫：仅在明确是图片分享文章时才解析，避免对每篇普通图文都跑一次 iframe/sandbox eval。
+        if (article.item_show_type === 8 || html.includes('picture_page_info_list')) {
+          const cgiData = await parseCgiDataNew(html);
+          const pictureList = cgiData?.picture_page_info_list;
+          if (Array.isArray(pictureList)) {
+            for (const picture of pictureList) {
+              const cdnUrl = picture?.cdn_url;
+              if (cdnUrl) {
+                resources.push(cdnUrl);
+                this.resources.add({ url: cdnUrl, fakeid: article.fakeid });
+              }
+            }
+          }
+        }
+
         const imgs = document.querySelectorAll<HTMLImageElement>('img');
         for (const img of imgs) {
           const imgUrl = img.getAttribute('src') || img.getAttribute('data-src');
@@ -882,35 +899,33 @@ export class Exporter extends BaseDownloader {
       return str;
     }
 
-    const cgiData = await parseCgiDataNew(html);
-    const picture_page_info_list: any[] | undefined = cgiData?.picture_page_info_list;
-    if (Array.isArray(picture_page_info_list) && picture_page_info_list.length > 0) {
-      // 是图片分享文章，把图片写入 #js_share_content_page_hd
-      const containerEl = $jsArticleContent.querySelector('#js_share_content_page_hd');
-      if (containerEl) {
-        let innerHTML =
-          '<div style="display: flex;flex-direction: column;align-items: center;gap: 10px;padding-block: 20px;">';
-        for (const picture of picture_page_info_list) {
-          innerHTML += `<img src="${picture.cdn_url}" alt="" style="display: block;border: 1px solid gray;border-radius: 5px;max-width: 90%;" onclick="window.open(this.src, '_blank', 'popup')" />`;
+    // 性能守卫：99% 普通图文 HTML 不含 picture_page_info_list 字符串，在此短路以避免
+    // 对每篇文章都跑一次 parseCgiDataNew（iframe/sandbox eval）。
+    if (html.includes('picture_page_info_list')) {
+      const cgiData = await parseCgiDataNew(html);
+      const picture_page_info_list: any[] | undefined = cgiData?.picture_page_info_list;
+      if (Array.isArray(picture_page_info_list) && picture_page_info_list.length > 0) {
+        // 是图片分享文章，把图片写入 #js_share_content_page_hd
+        const containerEl = $jsArticleContent.querySelector('#js_share_content_page_hd');
+        if (containerEl) {
+          containerEl.innerHTML = renderPictureCarouselHTML(picture_page_info_list);
         }
-        innerHTML += '</div>';
-        containerEl.innerHTML = innerHTML;
-      }
 
-      const desc: string = cgiData.desc || cgiData.content_noencode || '';
-      if (desc) {
-        // #js_image_desc 是 Vue 运行时注入的元素，缓存的原始 HTML 里没有 —— 按需兜底创建
-        let $imageDesc = $jsArticleContent.querySelector('#js_image_desc') as HTMLElement | null;
-        if (!$imageDesc) {
-          $imageDesc = document.createElement('p');
-          $imageDesc.id = 'js_image_desc';
-          $jsArticleContent.querySelector('#js_base_container')?.appendChild($imageDesc);
+        const desc: string = cgiData.desc || cgiData.content_noencode || '';
+        if (desc) {
+          // #js_image_desc 是 Vue 运行时注入的元素，缓存的原始 HTML 里没有 —— 按需兜底创建
+          let $imageDesc = $jsArticleContent.querySelector('#js_image_desc') as HTMLElement | null;
+          if (!$imageDesc) {
+            $imageDesc = document.createElement('p');
+            $imageDesc.id = 'js_image_desc';
+            $jsArticleContent.querySelector('#js_base_container')?.appendChild($imageDesc);
+          }
+          let processedDesc = desc.replace(/\r/g, '').replace(/\n/g, '<br>').replace(/\s/g, '&nbsp;');
+          processedDesc = decode_html(processedDesc, false);
+          $imageDesc.innerHTML = processedDesc;
+
+          bodyCls += ' pages_skin_pc page_share_img';
         }
-        let processedDesc = desc.replace(/\r/g, '').replace(/\n/g, '<br>').replace(/\s/g, '&nbsp;');
-        processedDesc = decode_html(processedDesc, false);
-        $imageDesc.innerHTML = processedDesc;
-
-        bodyCls += ' pages_skin_pc page_share_img';
       }
     }
 
@@ -969,6 +984,7 @@ export class Exporter extends BaseDownloader {
             height: 16px;
             margin-right: 3px;
         }
+        ${carouselCSS}
     </style>
 </head>
 <body class="${bodyCls}">
