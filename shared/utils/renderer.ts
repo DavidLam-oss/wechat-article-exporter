@@ -303,7 +303,6 @@ export function renderPictureCarouselHTML(pictures: Array<{ cdn_url: string; wid
     const label = `图${idx + 1}`;
     html += `<div class="picture-item" id="${label}">
   <a href="${url}" target="_blank" rel="noopener noreferrer"><img class="picture-item-img" src="${url}" alt="${label}" /></a>
-  <p class="picture-item-label">${label}</p>
 </div>`;
   });
   html += '</div>';
@@ -407,20 +406,6 @@ export const carouselCSS = `
     display: block;
     cursor: pointer;
 }
-.picture-item-label {
-    position: absolute;
-    bottom: 12px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(0, 0, 0, 0.65);
-    color: #fff;
-    padding: 4px 12px;
-    border-radius: 20px;
-    font-size: 12px;
-    pointer-events: none;
-    margin: 0;
-    line-height: 1.5;
-}
 .picture-arrow {
     position: absolute;
     top: 50%;
@@ -429,9 +414,9 @@ export const carouselCSS = `
     width: 44px;
     height: 44px;
     border-radius: 50%;
-    background: rgba(0, 0, 0, 0.6);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
     font-size: 24px;
     color: #fff;
     cursor: pointer;
@@ -440,13 +425,20 @@ export const carouselCSS = `
     justify-content: center;
     padding: 0;
     user-select: none;
-    transition: all 0.2s ease;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease, transform 0.2s ease, background-color 0.2s ease;
 }
-.picture-arrow:hover {
+.picture-carousel-container:hover .picture-arrow {
+    opacity: 0.6;
+    pointer-events: auto;
+}
+.picture-carousel-container:hover .picture-arrow:hover {
     background: rgba(0, 0, 0, 0.85);
+    opacity: 0.95;
     transform: translateY(-50%) scale(1.05);
 }
-.picture-arrow:active {
+.picture-carousel-container:hover .picture-arrow:active {
     transform: translateY(-50%) scale(0.95);
 }
 @media (min-width: 768px) {

@@ -126,6 +126,17 @@ export class Exporter extends BaseDownloader {
       const html = await cached.file.text();
       const document = parser.parseFromString(html, 'text/html');
 
+      // 清理无用 DOM，使提取的资源与最终输出的 HTML 保持严格一致
+      const $jsArticleContent = document.querySelector('#js_article');
+      if ($jsArticleContent) {
+        $jsArticleContent.querySelector('#js_top_ad_area')?.remove();
+        $jsArticleContent.querySelector('#js_tags_preview_toast')?.remove();
+        $jsArticleContent.querySelector('#content_bottom_area')?.remove();
+        $jsArticleContent.querySelectorAll('script').forEach(el => el.remove());
+        $jsArticleContent.querySelector('#js_pc_qr_code')?.remove();
+        $jsArticleContent.querySelector('#wx_stream_article_slide_tip')?.remove();
+      }
+
       // 该 html 内部的资源，包括图片、背景图片、样式
       // 用 Set 去重：picture_page_info_list 的 cdn_url 可能与 <img> src 重叠
       // （少数图片分享文章在 <img> 里也有图），add() 会自动忽略重复 key。
