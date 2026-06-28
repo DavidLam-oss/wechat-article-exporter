@@ -78,6 +78,15 @@ export class Exporter extends BaseDownloader {
       } else if (this.exportType === 'word') {
         await this.exportWordFiles();
       } else if (this.exportType === 'markdown') {
+        const downloadImages = (preferences.value as Preferences).exportConfig.exportHtmlDownloadImages !== false;
+        if (downloadImages) {
+          // 1. 提取出所有html中需要下载的资源链接
+          await this.extractResources();
+          this.emit('export:download', this.resources.size);
+
+          // 2. 采用队列下载 resources 资源
+          await this.processExportQueue();
+        }
         await this.exportMarkdownFiles();
       } else if (this.exportType === 'pdf') {
         // 1. 提取出所有html中需要下载的资源链接（复用HTML导出管线）
@@ -120,7 +129,7 @@ export class Exporter extends BaseDownloader {
       // 该 html 内部的资源，包括图片、背景图片、样式
       const resources: string[] = [];
       const downloadImages =
-        this.exportType !== 'html' ||
+        !['html', 'markdown'].includes(this.exportType) ||
         (preferences.value as Preferences).exportConfig.exportHtmlDownloadImages !== false;
 
       // 提取图片地址
@@ -416,12 +425,44 @@ export class Exporter extends BaseDownloader {
     this.emit('export:total', total);
 
     const turndownService = new TurndownService();
+    const downloadImages = (preferences.value as Preferences).exportConfig.exportHtmlDownloadImages !== false;
 
     await this.processFileExportQueue(this.urls, async url => {
+      const cached = await getHtmlCache(url);
+      if (!cached) {
+        console.warn(`文章(url: ${url})的 html 还未下载，不能导出`);
+        return;
+      }
+
       const filename = await this.exportDirName(url);
       console.log(`开始导出: ${filename}(${url})`);
 
-      const content = await this.getRenderedHTML(url);
+      const html = await cached.file.text();
+      let content = '';
+
+      if (downloadImages) {
+        const resourceMap = await getResourceMapCache(url);
+        const urlmap = new Map<string, string>();
+        if (resourceMap) {
+          for (const resourceUrl of resourceMap.resources) {
+            const resource = await getResourceCache(resourceUrl);
+            if (!resource) {
+              continue;
+            }
+
+            const uuid = new Date().getTime() + Math.random().toString();
+            const ext = mime.getExtension(resource.file.type);
+            if (ext) {
+              await this.writeFile(`assets/${uuid}.${ext}`, resource.file);
+              urlmap.set(resourceUrl, `./assets/${uuid}.${ext}`);
+            }
+          }
+        }
+        content = await this.normalizeHtml(cached, html, urlmap);
+      } else {
+        content = await this.getRenderedHTML(url);
+      }
+
       if (!content) return;
       const markdown = turndownService.turndown(content);
 
