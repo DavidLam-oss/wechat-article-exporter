@@ -529,8 +529,8 @@ export class Exporter extends BaseDownloader {
     this.emit('export:total', total);
 
     const turndownService = new TurndownService();
-    // 渲染后的 html 含 <head> 里的 <title> 和 <style>，里面的内容对 markdown 没用还会污染首行
-    turndownService.remove(['title', 'style']);
+    // 渲染后的 html 含 <head> 里的 <title> 和 <style> 还有 <script>，里面的内容对 markdown 没用
+    turndownService.remove(['title', 'style', 'script']);
     const downloadImages = (preferences.value as Preferences).exportConfig.exportHtmlDownloadImages !== false;
 
     await this.processFileExportQueue(this.urls, async url => {
@@ -1010,7 +1010,17 @@ export class Exporter extends BaseDownloader {
         // 是图片分享文章，把图片写入 #js_share_content_page_hd
         const containerEl = $jsArticleContent.querySelector('#js_share_content_page_hd');
         if (containerEl) {
-          containerEl.innerHTML = renderPictureCarouselHTML(picture_page_info_list);
+          if (this.exportType === 'markdown') {
+            // 如果是 Markdown 模式，不需要复杂的轮播 HTML，直接输出普通图片列表即可
+            let innerHTML = '';
+            for (const picture of picture_page_info_list) {
+              const url = String(picture?.cdn_url || '').replace(/&amp;/g, '&');
+              innerHTML += `<p><img src="${url}" alt="image" /></p>\n`;
+            }
+            containerEl.innerHTML = innerHTML;
+          } else {
+            containerEl.innerHTML = renderPictureCarouselHTML(picture_page_info_list);
+          }
         }
 
         const desc: string = cgiData.desc || cgiData.content_noencode || '';
